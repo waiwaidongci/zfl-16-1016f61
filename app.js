@@ -255,10 +255,10 @@ function computeTextAllocation(text) {
       results.push({ char: ch, needed, status: "missing", allocations: [], totalAvailable: 0 });
       continue;
     }
-    const totalAvailable = matchingTypes.reduce((sum, t) => sum + (t.quantity - (usage[t.id] || 0)), 0);
+    const totalAvailable = matchingTypes.reduce((sum, t) => sum + Math.max(0, t.quantity - (usage[t.id] || 0)), 0);
     const allocations = perCharAllocation[ch] || [];
     const allocatedCount = allocations.reduce((sum, a) => sum + a.count, 0);
-    const status = allocatedCount >= needed ? "ok" : totalAvailable > 0 ? "low" : "missing";
+    const status = allocatedCount >= needed ? "ok" : "low";
     results.push({ char: ch, needed, status, allocations, totalAvailable });
   }
 
