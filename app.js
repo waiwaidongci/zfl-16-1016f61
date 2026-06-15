@@ -35,6 +35,60 @@ const defaultState = {
 
 let state = loadState();
 
+const MAX_HISTORY = 50;
+let historyStack = [];
+let redoStack = [];
+let isRestoringHistory = false;
+
+function deepCloneState(s) {
+  return {
+    inventory: structuredClone(s.inventory),
+    selectedTypeId: s.selectedTypeId,
+    drafts: structuredClone(s.drafts),
+    workTitle: s.workTitle,
+    currentPageId: s.currentPageId,
+    pages: structuredClone(s.pages),
+    usageTab: s.usageTab
+  };
+}
+
+function pushHistory() {
+  if (isRestoringHistory) return;
+  historyStack.push(deepCloneState(state));
+  if (historyStack.length > MAX_HISTORY) {
+    historyStack.shift();
+  }
+  redoStack = [];
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  els.undoBtn.disabled = historyStack.length === 0;
+  els.redoBtn.disabled = redoStack.length === 0;
+}
+
+function undo() {
+  if (historyStack.length === 0) return;
+  redoStack.push(deepCloneState(state));
+  state = historyStack.pop();
+  isRestoringHistory = true;
+  saveState();
+  renderAll();
+  isRestoringHistory = false;
+  updateHistoryButtons();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  historyStack.push(deepCloneState(state));
+  state = redoStack.pop();
+  isRestoringHistory = true;
+  saveState();
+  renderAll();
+  isRestoringHistory = false;
+  updateHistoryButtons();
+}
+
 if (state.pages.length === 0) {
   const firstPage = createDefaultPage();
   state.pages.push(firstPage);
@@ -122,6 +176,8 @@ const els = {
   currentPageCount: document.querySelector("#currentPageCount"),
   totalCount: document.querySelector("#totalCount"),
   usageTabs: document.querySelector(".usage-tabs"),
+  undoBtn: document.querySelector("#undoBtn"),
+  redoBtn: document.querySelector("#redoBtn"),
   proofreadBtn: document.querySelector("#proofreadBtn"),
   proofreadRefreshBtn: document.querySelector("#proofreadRefreshBtn"),
   proofreadSummary: document.querySelector("#proofreadSummary"),
@@ -366,6 +422,8 @@ function applyTemplate(templateId) {
   const template = layoutTemplates.find((t) => t.id === templateId);
   if (!template) return;
 
+  pushHistory();
+
   const currentPage = getCurrentPage();
   currentPage.activeTemplateId = templateId;
   currentPage.settings.paperSize = template.recommended.paperSize;
@@ -381,6 +439,7 @@ function applyTemplate(templateId) {
 }
 
 function clearTemplate() {
+  pushHistory();
   getCurrentPage().activeTemplateId = null;
   renderAll();
 }
@@ -574,6 +633,8 @@ function analyzeText() {
 function confirmTextLayout() {
   if (!tlPlan) return;
 
+  pushHistory();
+
   const currentPage = getCurrentPage();
   const { text, direction } = tlPlan;
   const { cols, rows } = getGrid(currentPage.settings.paperSize);
@@ -646,6 +707,7 @@ function renderAll() {
   renderUsage();
   renderDrafts();
   renderActiveTemplateLabel();
+  updateHistoryButtons();
   const proofreadTab = document.querySelector('.panel-tab[data-right-tab="proofread"]');
   if (proofreadTab && proofreadTab.classList.contains("active")) {
     renderProofread();
@@ -656,6 +718,7 @@ function placeType(row, col, typeId = state.selectedTypeId) {
   if (!typeId) return;
   const placements = getPagePlacements();
   const existingIndex = placements.findIndex((item) => item.row === row && item.col === col);
+  pushHistory();
   if (existingIndex >= 0) {
     if (placements[existingIndex].typeId === typeId) {
       placements.splice(existingIndex, 1);
@@ -669,6 +732,7 @@ function placeType(row, col, typeId = state.selectedTypeId) {
 }
 
 function addPage() {
+  pushHistory();
   const newIndex = state.pages.length + 1;
   const newPage = createDefaultPage(`第${newIndex}页`);
   state.pages.push(newPage);
@@ -677,6 +741,7 @@ function addPage() {
 }
 
 function duplicatePage() {
+  pushHistory();
   const currentPage = getCurrentPage();
   const newIndex = state.pages.length + 1;
   const newPage = {
@@ -696,6 +761,7 @@ function renamePage() {
   const currentPage = getCurrentPage();
   const newName = prompt("请输入新的页面名称：", currentPage.name);
   if (newName && newName.trim()) {
+    pushHistory();
     currentPage.name = newName.trim();
     renderAll();
   }
@@ -707,8 +773,9 @@ function deletePage() {
     return;
   }
   const currentPage = getCurrentPage();
-  if (!confirm(`确定要删除页面「${currentPage.name}」吗？此操作不可撤销。`)) return;
+  if (!confirm(`确定要删除页面「${currentPage.name}」吗？`)) return;
 
+  pushHistory();
   const currentIndex = getPageIndex(currentPage.id);
   state.pages = state.pages.filter((p) => p.id !== currentPage.id);
   state.currentPageId = state.pages[Math.max(0, currentIndex - 1)].id;
@@ -732,6 +799,7 @@ function addType(event) {
     wear: els.wearInput.value
   };
   if (!item.char || !item.style) return;
+  pushHistory();
   state.inventory.unshift(item);
   state.selectedTypeId = item.id;
   els.typeForm.reset();
@@ -1533,6 +1601,8 @@ function closeImportModal() {
 function confirmImport() {
   if (!pendingImport) return;
 
+  pushHistory();
+
   const mode = document.querySelector('input[name="importMode"]:checked').value;
   const { validItems } = pendingImport;
 
@@ -1572,20 +1642,30 @@ function confirmImport() {
 
 els.paperSize.addEventListener("change", () => {
   const currentPage = getCurrentPage();
+  const { cols, rows } = getGrid(els.paperSize.value);
+  const willCrop = currentPage.placements.some((item) => item.row >= rows || item.col >= cols);
+  if (willCrop || currentPage.settings.paperSize !== els.paperSize.value) {
+    pushHistory();
+  }
   currentPage.settings.paperSize = els.paperSize.value;
-  const { cols, rows } = getGrid(currentPage.settings.paperSize);
   currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
   renderAll();
 });
 
 els.flowMode.addEventListener("change", () => {
+  pushHistory();
   getCurrentPage().settings.flowMode = els.flowMode.value;
   renderAll();
 });
 
+let gridGapTimer = null;
 els.gridGap.addEventListener("input", () => {
-  getCurrentPage().settings.gridGap = Number(els.gridGap.value);
-  renderAll();
+  if (gridGapTimer) clearTimeout(gridGapTimer);
+  gridGapTimer = setTimeout(() => {
+    pushHistory();
+    getCurrentPage().settings.gridGap = Number(els.gridGap.value);
+    renderAll();
+  }, 300);
 });
 
 els.workTitle.addEventListener("input", () => {
@@ -1599,6 +1679,8 @@ els.styleFilter.addEventListener("change", renderInventory);
 els.saveDraftBtn.addEventListener("click", saveDraft);
 els.exportBtn.addEventListener("click", exportPreview);
 els.clearBoardBtn.addEventListener("click", () => {
+  if (getCurrentPage().placements.length === 0) return;
+  pushHistory();
   getCurrentPage().placements = [];
   renderAll();
 });
@@ -1661,7 +1743,25 @@ els.importModal.addEventListener("click", (event) => {
   if (event.target === els.importModal) closeImportModal();
 });
 
+els.undoBtn.addEventListener("click", undo);
+els.redoBtn.addEventListener("click", redo);
+
 document.addEventListener("keydown", (event) => {
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const modKey = isMac ? event.metaKey : event.ctrlKey;
+
+  if (modKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    undo();
+    return;
+  }
+
+  if ((modKey && event.shiftKey && event.key.toLowerCase() === "z") || (modKey && event.key.toLowerCase() === "y")) {
+    event.preventDefault();
+    redo();
+    return;
+  }
+
   if (event.key === "Escape" && !els.textLayoutModal.hidden) closeTextLayoutModal();
   if (event.key === "Escape" && !els.importModal.hidden) closeImportModal();
   if (event.key === "Escape" && !els.templateLibraryModal.hidden) closeTemplateLibraryModal();
@@ -1731,6 +1831,7 @@ els.typeList.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-delete-type]");
   if (deleteButton) {
     const typeId = deleteButton.dataset.deleteType;
+    pushHistory();
     state.inventory = state.inventory.filter((item) => item.id !== typeId);
     state.pages.forEach((page) => {
       page.placements = page.placements.filter((item) => item.typeId !== typeId);
@@ -1774,6 +1875,8 @@ els.draftList.addEventListener("click", (event) => {
   if (loadButton) {
     const draft = state.drafts.find((item) => item.id === loadButton.dataset.loadDraft);
     if (!draft) return;
+
+    pushHistory();
 
     if (draft.pages && draft.pages.length > 0) {
       state.pages = structuredClone(draft.pages);

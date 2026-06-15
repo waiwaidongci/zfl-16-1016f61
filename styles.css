@@ -66,6 +66,19 @@ button.gold:hover {
   border-color: #9a6e1f;
 }
 
+button.history-btn {
+  min-width: 80px;
+  font-weight: 700;
+}
+
+button.history-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+
 input,
 select {
   min-width: 0;
