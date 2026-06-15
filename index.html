@@ -24,6 +24,11 @@
 
       <section class="settings-bar" aria-label="版面设置">
         <label>
+          作品名
+          <input id="workTitle" type="text" placeholder="例：晚风小笺" />
+        </label>
+        <div class="divider-v"></div>
+        <label>
           纸张
           <select id="paperSize">
             <option value="postcard">明信片</option>
@@ -41,10 +46,6 @@
         <label>
           网格
           <input id="gridGap" type="range" min="4" max="18" value="8" />
-        </label>
-        <label>
-          作品名
-          <input id="workTitle" type="text" placeholder="例：晚风小笺" />
         </label>
       </section>
 
@@ -81,6 +82,15 @@
         </aside>
 
         <section class="stage-wrap">
+          <div class="pages-bar">
+            <div class="pages-tabs" id="pagesTabs"></div>
+            <div class="pages-actions">
+              <button id="addPageBtn" class="mini-btn" type="button" title="新增页面">+ 新增</button>
+              <button id="duplicatePageBtn" class="mini-btn" type="button" title="复制当前页">⧉ 复制</button>
+              <button id="renamePageBtn" class="mini-btn" type="button" title="重命名">✎ 改名</button>
+              <button id="deletePageBtn" class="mini-btn" type="button" title="删除当前页">× 删除</button>
+            </div>
+          </div>
           <div class="status-strip">
             <div>
               <strong id="selectedTypeLabel">未选择字模</strong>
@@ -98,7 +108,20 @@
         <aside class="panel draft-panel">
           <div class="panel-head">
             <h2>草稿与核对</h2>
-            <span id="placedCount"></span>
+          </div>
+          <div class="usage-summary">
+            <div class="usage-summary-item">
+              <span class="usage-summary-label">当前页</span>
+              <span id="currentPageCount" class="usage-summary-value">0个落字</span>
+            </div>
+            <div class="usage-summary-item total">
+              <span class="usage-summary-label">全作品</span>
+              <span id="totalCount" class="usage-summary-value">0个落字</span>
+            </div>
+          </div>
+          <div class="usage-tabs">
+            <button class="usage-tab active" data-usage-tab="current" type="button">当前页用量</button>
+            <button class="usage-tab" data-usage-tab="total" type="button">全作品用量</button>
           </div>
           <div id="usageList" class="usage-list"></div>
           <div class="divider"></div>

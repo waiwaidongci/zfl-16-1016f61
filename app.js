@@ -9,21 +9,62 @@ const starterInventory = [
   { id: crypto.randomUUID(), char: "雨", style: "仿宋细字", size: 22, quantity: 4, wear: "新" }
 ];
 
+function createDefaultPage(name = "第1页") {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    settings: {
+      paperSize: "postcard",
+      flowMode: "horizontal",
+      gridGap: 8
+    },
+    placements: [],
+    activeTemplateId: null
+  };
+}
+
 const defaultState = {
   inventory: starterInventory,
   selectedTypeId: starterInventory[0].id,
-  placements: [],
   drafts: [],
-  activeTemplateId: null,
-  settings: {
-    paperSize: "postcard",
-    flowMode: "horizontal",
-    gridGap: 8,
-    workTitle: "晚风小笺"
-  }
+  workTitle: "晚风小笺",
+  currentPageId: null,
+  pages: [],
+  usageTab: "current"
 };
 
 let state = loadState();
+
+if (state.pages.length === 0) {
+  const firstPage = createDefaultPage();
+  state.pages.push(firstPage);
+  state.currentPageId = firstPage.id;
+  saveState();
+}
+
+function getCurrentPage() {
+  return state.pages.find((p) => p.id === state.currentPageId) || state.pages[0];
+}
+
+function getPageById(id) {
+  return state.pages.find((p) => p.id === id);
+}
+
+function getPageIndex(pageId) {
+  return state.pages.findIndex((p) => p.id === pageId);
+}
+
+function getPageSettings() {
+  return getCurrentPage().settings;
+}
+
+function getPagePlacements() {
+  return getCurrentPage().placements;
+}
+
+function getPageTemplateId() {
+  return getCurrentPage().activeTemplateId;
+}
 
 const els = {
   paperSize: document.querySelector("#paperSize"),
@@ -44,7 +85,6 @@ const els = {
   shortageBadge: document.querySelector("#shortageBadge"),
   usageList: document.querySelector("#usageList"),
   draftList: document.querySelector("#draftList"),
-  placedCount: document.querySelector("#placedCount"),
   inventoryCount: document.querySelector("#inventoryCount"),
   saveDraftBtn: document.querySelector("#saveDraftBtn"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -73,7 +113,15 @@ const els = {
   tlLibraryCancel: document.querySelector("#tlLibraryCancel"),
   templateList: document.querySelector("#templateList"),
   activeTemplateLabel: document.querySelector("#activeTemplateLabel"),
-  clearTemplateBtn: document.querySelector("#clearTemplateBtn")
+  clearTemplateBtn: document.querySelector("#clearTemplateBtn"),
+  pagesTabs: document.querySelector("#pagesTabs"),
+  addPageBtn: document.querySelector("#addPageBtn"),
+  duplicatePageBtn: document.querySelector("#duplicatePageBtn"),
+  renamePageBtn: document.querySelector("#renamePageBtn"),
+  deletePageBtn: document.querySelector("#deletePageBtn"),
+  currentPageCount: document.querySelector("#currentPageCount"),
+  totalCount: document.querySelector("#totalCount"),
+  usageTabs: document.querySelector(".usage-tabs")
 };
 
 function loadState() {
@@ -81,12 +129,33 @@ function loadState() {
   if (!saved) return structuredClone(defaultState);
   try {
     const parsed = JSON.parse(saved);
-    return {
-      ...structuredClone(defaultState),
-      ...parsed,
-      activeTemplateId: parsed.activeTemplateId || null,
-      settings: { ...defaultState.settings, ...parsed.settings }
-    };
+    const newState = { ...structuredClone(defaultState), ...parsed };
+
+    if (!newState.pages || newState.pages.length === 0) {
+      const migratedPage = createDefaultPage("第1页");
+      if (parsed.settings) {
+        migratedPage.settings = {
+          paperSize: parsed.settings.paperSize || "postcard",
+          flowMode: parsed.settings.flowMode || "horizontal",
+          gridGap: parsed.settings.gridGap || 8
+        };
+        newState.workTitle = parsed.settings.workTitle || "晚风小笺";
+      }
+      if (parsed.placements) {
+        migratedPage.placements = parsed.placements;
+      }
+      if (parsed.activeTemplateId !== undefined) {
+        migratedPage.activeTemplateId = parsed.activeTemplateId;
+      }
+      newState.pages = [migratedPage];
+      newState.currentPageId = migratedPage.id;
+    }
+
+    if (!newState.usageTab) {
+      newState.usageTab = "current";
+    }
+
+    return newState;
   } catch {
     return structuredClone(defaultState);
   }
@@ -96,15 +165,15 @@ function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
-function getGrid(paperSize = state.settings.paperSize) {
+function getGrid(paperSize = getPageSettings().paperSize) {
   if (paperSize === "bookmark") return { cols: 7, rows: 18 };
   if (paperSize === "square") return { cols: 12, rows: 12 };
   return { cols: 16, rows: 10 };
 }
 
-function isTemplateCell(row, col) {
-  if (!state.activeTemplateId) return true;
-  const positions = getTemplatePositions(state.activeTemplateId);
+function isTemplateCell(row, col, page = getCurrentPage()) {
+  if (!page.activeTemplateId) return true;
+  const positions = getTemplatePositions(page.activeTemplateId, page.settings.paperSize);
   return positions.some((p) => p.row === row && p.col === col);
 }
 
@@ -116,18 +185,38 @@ function getSelectedType() {
   return state.inventory.find((item) => item.id === state.selectedTypeId) || null;
 }
 
-function getUsage() {
-  return state.placements.reduce((acc, placement) => {
+function getUsage(placements = getPagePlacements()) {
+  return placements.reduce((acc, placement) => {
     acc[placement.typeId] = (acc[placement.typeId] || 0) + 1;
     return acc;
   }, {});
 }
 
+function getTotalUsage() {
+  const allPlacements = state.pages.flatMap((p) => p.placements);
+  return getUsage(allPlacements);
+}
+
 function renderSettings() {
-  els.paperSize.value = state.settings.paperSize;
-  els.flowMode.value = state.settings.flowMode;
-  els.gridGap.value = state.settings.gridGap;
-  els.workTitle.value = state.settings.workTitle;
+  const pageSettings = getPageSettings();
+  els.paperSize.value = pageSettings.paperSize;
+  els.flowMode.value = pageSettings.flowMode;
+  els.gridGap.value = pageSettings.gridGap;
+  els.workTitle.value = state.workTitle;
+}
+
+function renderPages() {
+  els.pagesTabs.innerHTML = state.pages
+    .map((page) => {
+      const active = page.id === state.currentPageId ? "active" : "";
+      return `
+        <button class="page-tab ${active}" data-page-id="${page.id}" type="button">
+          <span class="page-tab-name">${escapeHtml(page.name)}</span>
+          <span class="page-tab-count">${page.placements.length}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function renderStyleFilter() {
@@ -169,20 +258,21 @@ function renderInventory() {
 }
 
 function renderStage() {
-  const { cols, rows } = getGrid();
-  const map = new Map(state.placements.map((item) => [placementKey(item.row, item.col), item]));
-  const templatePositions = state.activeTemplateId ? new Set(getTemplatePositions(state.activeTemplateId).map((p) => placementKey(p.row, p.col))) : null;
-  els.stage.className = `stage ${state.settings.paperSize}`;
+  const currentPage = getCurrentPage();
+  const { cols, rows } = getGrid(currentPage.settings.paperSize);
+  const map = new Map(currentPage.placements.map((item) => [placementKey(item.row, item.col), item]));
+  const templatePositions = currentPage.activeTemplateId ? new Set(getTemplatePositions(currentPage.activeTemplateId, currentPage.settings.paperSize).map((p) => placementKey(p.row, p.col))) : null;
+  els.stage.className = `stage ${currentPage.settings.paperSize}`;
   els.stage.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   els.stage.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
-  els.stage.style.gap = `${state.settings.gridGap}px`;
+  els.stage.style.gap = `${currentPage.settings.gridGap}px`;
   const cells = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const key = placementKey(row, col);
       const placement = map.get(key);
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
-      const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
+      const vertical = currentPage.settings.flowMode === "vertical" ? "vertical" : "";
       const inTemplate = templatePositions?.has(key);
       const templateCellClass = templatePositions ? (inTemplate ? "template-cell" : "non-template-cell") : "";
       cells.push(`
@@ -196,8 +286,9 @@ function renderStage() {
 }
 
 function renderActiveTemplateLabel() {
-  if (state.activeTemplateId) {
-    const template = layoutTemplates.find((t) => t.id === state.activeTemplateId);
+  const templateId = getPageTemplateId();
+  if (templateId) {
+    const template = layoutTemplates.find((t) => t.id === templateId);
     els.activeTemplateLabel.textContent = template ? `当前模板：${template.name}` : "";
     els.clearTemplateBtn.hidden = false;
   } else {
@@ -264,28 +355,34 @@ function applyTemplate(templateId) {
   const template = layoutTemplates.find((t) => t.id === templateId);
   if (!template) return;
 
-  state.activeTemplateId = templateId;
-  state.settings.paperSize = template.recommended.paperSize;
-  state.settings.flowMode = template.recommended.flowMode;
-  state.settings.gridGap = template.recommended.gridGap;
-  state.placements = [];
+  const currentPage = getCurrentPage();
+  currentPage.activeTemplateId = templateId;
+  currentPage.settings.paperSize = template.recommended.paperSize;
+  currentPage.settings.flowMode = template.recommended.flowMode;
+  currentPage.settings.gridGap = template.recommended.gridGap;
+  currentPage.placements = [];
 
   const { cols, rows } = getGrid();
-  state.placements = state.placements.filter((item) => item.row < rows && item.col < cols);
+  currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
 
   closeTemplateLibraryModal();
   renderAll();
 }
 
 function clearTemplate() {
-  state.activeTemplateId = null;
+  getCurrentPage().activeTemplateId = null;
   renderAll();
 }
 
 function renderUsage() {
-  const usage = getUsage();
+  const usage = state.usageTab === "current" ? getUsage() : getTotalUsage();
   const entries = state.inventory.filter((item) => usage[item.id]);
-  els.placedCount.textContent = `${state.placements.length}个落字`;
+  const currentPage = getCurrentPage();
+
+  const currentCount = currentPage.placements.length;
+  const totalCount = state.pages.reduce((sum, p) => sum + p.placements.length, 0);
+  els.currentPageCount.textContent = `${currentCount}个落字`;
+  els.totalCount.textContent = `${totalCount}个落字`;
 
   const shortages = entries.filter((item) => usage[item.id] > item.quantity);
   els.shortageBadge.textContent = shortages.length ? `${shortages.length}处超量` : "数量充足";
@@ -293,6 +390,10 @@ function renderUsage() {
 
   const selectedType = getSelectedType();
   els.selectedTypeLabel.textContent = selectedType ? `当前：${selectedType.char} · ${selectedType.style}` : "未选择字模";
+
+  document.querySelectorAll(".usage-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.usageTab === state.usageTab);
+  });
 
   els.usageList.innerHTML =
     entries
@@ -313,16 +414,20 @@ function renderDrafts() {
   els.draftList.innerHTML =
     state.drafts
       .map(
-        (draft) => `
+        (draft) => {
+          const totalPlacements = draft.pages ? draft.pages.reduce((sum, p) => sum + p.placements.length, 0) : (draft.placements?.length || 0);
+          const pageCount = draft.pages ? draft.pages.length : 1;
+          return `
           <article class="draft-item">
             <strong>${escapeHtml(draft.title)}</strong>
-            <span>${draft.placements.length}个落字 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
+            <span>${pageCount}页 · ${totalPlacements}个落字 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
             <div class="draft-actions">
               <button type="button" data-load-draft="${draft.id}">载入</button>
               <button type="button" data-delete-draft="${draft.id}">删除</button>
             </div>
           </article>
-        `
+        `;
+        }
       )
       .join("") || `<p class="empty">还没有保存草稿。</p>`;
 }
@@ -458,10 +563,11 @@ function analyzeText() {
 function confirmTextLayout() {
   if (!tlPlan) return;
 
+  const currentPage = getCurrentPage();
   const { text, direction } = tlPlan;
-  const { cols, rows } = getGrid();
+  const { cols, rows } = getGrid(currentPage.settings.paperSize);
   const usage = getUsage();
-  const occupied = new Set(state.placements.map((p) => placementKey(p.row, p.col)));
+  const occupied = new Set(currentPage.placements.map((p) => placementKey(p.row, p.col)));
 
   const charAssign = [];
   const usedTypeIds = {};
@@ -491,7 +597,7 @@ function confirmTextLayout() {
   if (direction === "horizontal") {
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < cols; col += 1) {
-        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col)) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
           emptyCells.push({ row, col });
         }
       }
@@ -499,7 +605,7 @@ function confirmTextLayout() {
   } else {
     for (let col = 0; col < cols; col += 1) {
       for (let row = 0; row < rows; row += 1) {
-        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col)) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
           emptyCells.push({ row, col });
         }
       }
@@ -511,7 +617,7 @@ function confirmTextLayout() {
     if (charAssign[i] === null) continue;
     if (cellIdx >= emptyCells.length) break;
     const cell = emptyCells[cellIdx];
-    state.placements.push({ row: cell.row, col: cell.col, typeId: charAssign[i] });
+    currentPage.placements.push({ row: cell.row, col: cell.col, typeId: charAssign[i] });
     cellIdx += 1;
   }
 
@@ -524,6 +630,7 @@ function renderAll() {
   renderSettings();
   renderStyleFilter();
   renderInventory();
+  renderPages();
   renderStage();
   renderUsage();
   renderDrafts();
@@ -532,16 +639,70 @@ function renderAll() {
 
 function placeType(row, col, typeId = state.selectedTypeId) {
   if (!typeId) return;
-  const existingIndex = state.placements.findIndex((item) => item.row === row && item.col === col);
+  const placements = getPagePlacements();
+  const existingIndex = placements.findIndex((item) => item.row === row && item.col === col);
   if (existingIndex >= 0) {
-    if (state.placements[existingIndex].typeId === typeId) {
-      state.placements.splice(existingIndex, 1);
+    if (placements[existingIndex].typeId === typeId) {
+      placements.splice(existingIndex, 1);
     } else {
-      state.placements[existingIndex].typeId = typeId;
+      placements[existingIndex].typeId = typeId;
     }
   } else {
-    state.placements.push({ row, col, typeId });
+    placements.push({ row, col, typeId });
   }
+  renderAll();
+}
+
+function addPage() {
+  const newIndex = state.pages.length + 1;
+  const newPage = createDefaultPage(`第${newIndex}页`);
+  state.pages.push(newPage);
+  state.currentPageId = newPage.id;
+  renderAll();
+}
+
+function duplicatePage() {
+  const currentPage = getCurrentPage();
+  const newIndex = state.pages.length + 1;
+  const newPage = {
+    id: crypto.randomUUID(),
+    name: `${currentPage.name} 副本`,
+    settings: { ...currentPage.settings },
+    placements: [...currentPage.placements],
+    activeTemplateId: currentPage.activeTemplateId
+  };
+  const currentIndex = getPageIndex(currentPage.id);
+  state.pages.splice(currentIndex + 1, 0, newPage);
+  state.currentPageId = newPage.id;
+  renderAll();
+}
+
+function renamePage() {
+  const currentPage = getCurrentPage();
+  const newName = prompt("请输入新的页面名称：", currentPage.name);
+  if (newName && newName.trim()) {
+    currentPage.name = newName.trim();
+    renderAll();
+  }
+}
+
+function deletePage() {
+  if (state.pages.length <= 1) {
+    alert("至少需要保留一个页面！");
+    return;
+  }
+  const currentPage = getCurrentPage();
+  if (!confirm(`确定要删除页面「${currentPage.name}」吗？此操作不可撤销。`)) return;
+
+  const currentIndex = getPageIndex(currentPage.id);
+  state.pages = state.pages.filter((p) => p.id !== currentPage.id);
+  state.currentPageId = state.pages[Math.max(0, currentIndex - 1)].id;
+  renderAll();
+}
+
+function switchPage(pageId) {
+  if (state.currentPageId === pageId) return;
+  state.currentPageId = pageId;
   renderAll();
 }
 
@@ -565,22 +726,22 @@ function addType(event) {
 }
 
 function saveDraft() {
-  const title = state.settings.workTitle.trim() || "未命名作品";
+  const title = state.workTitle.trim() || "未命名作品";
   state.drafts.unshift({
     id: crypto.randomUUID(),
     title,
-    settings: structuredClone(state.settings),
-    placements: structuredClone(state.placements),
+    workTitle: state.workTitle,
+    pages: structuredClone(state.pages),
     savedAt: new Date().toISOString()
   });
   state.drafts = state.drafts.slice(0, 8);
   renderAll();
 }
 
-function exportPreview() {
-  const { cols, rows } = getGrid();
-  const cell = state.settings.paperSize === "bookmark" ? 44 : 56;
-  const gap = state.settings.gridGap;
+function renderPageToCanvas(page, title, pageIndex, totalPages) {
+  const { cols, rows } = getGrid(page.settings.paperSize);
+  const cell = page.settings.paperSize === "bookmark" ? 44 : 56;
+  const gap = page.settings.gridGap;
   const margin = 48;
   const width = cols * cell + (cols - 1) * gap + margin * 2;
   const height = rows * cell + (rows - 1) * gap + margin * 2 + 70;
@@ -595,9 +756,10 @@ function exportPreview() {
   ctx.strokeRect(18, 18, width - 36, height - 36);
   ctx.fillStyle = "#22201c";
   ctx.font = "bold 28px sans-serif";
-  ctx.fillText(state.settings.workTitle || "未命名作品", margin, 50);
+  const pageInfo = totalPages > 1 ? `（${pageIndex + 1}/${totalPages}）${page.name}` : "";
+  ctx.fillText(`${title || "未命名作品"}${pageInfo}`, margin, 50);
   ctx.font = "bold 30px serif";
-  state.placements.forEach((placement) => {
+  page.placements.forEach((placement) => {
     const type = state.inventory.find((item) => item.id === placement.typeId);
     if (!type) return;
     const x = margin + placement.col * (cell + gap);
@@ -610,10 +772,42 @@ function exportPreview() {
     ctx.font = `900 ${Math.min(type.size + 8, 42)}px serif`;
     ctx.fillText(type.char, x + cell / 2, y + cell / 2);
   });
-  const link = document.createElement("a");
-  link.download = `${state.settings.workTitle || "movable-type"}.png`;
-  link.href = canvas.toDataURL("image/png");
-  link.click();
+  return canvas;
+}
+
+function exportPreview() {
+  const totalPages = state.pages.length;
+  const title = state.workTitle;
+
+  if (totalPages === 1) {
+    const canvas = renderPageToCanvas(state.pages[0], title, 0, 1);
+    const link = document.createElement("a");
+    link.download = `${title || "movable-type"}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    return;
+  }
+
+  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
+    const currentPage = getCurrentPage();
+    const currentIndex = getPageIndex(currentPage.id);
+    const canvas = renderPageToCanvas(currentPage, title, currentIndex, totalPages);
+    const link = document.createElement("a");
+    link.download = `${title || "movable-type"}_${currentPage.name}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    return;
+  }
+
+  state.pages.forEach((page, index) => {
+    setTimeout(() => {
+      const canvas = renderPageToCanvas(page, title, index, totalPages);
+      const link = document.createElement("a");
+      link.download = `${title || "movable-type"}_${page.name}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    }, index * 300);
+  });
 }
 
 function escapeHtml(value) {
@@ -696,10 +890,10 @@ const layoutTemplates = [
   }
 ];
 
-function getTemplatePositions(templateId) {
+function getTemplatePositions(templateId, paperSize) {
   const template = layoutTemplates.find((t) => t.id === templateId);
   if (!template) return [];
-  const { cols, rows } = getGrid();
+  const { cols, rows } = getGrid(paperSize);
   return template.getPositions(cols, rows);
 }
 
@@ -903,7 +1097,9 @@ function confirmImport() {
 
   if (mode === "overwrite") {
     state.inventory = dedupedImport;
-    state.placements = [];
+    state.pages.forEach((page) => {
+      page.placements = [];
+    });
     state.selectedTypeId = state.inventory[0]?.id || null;
   } else {
     const currentSigs = new Set(state.inventory.map(itemSignature));
@@ -924,24 +1120,25 @@ function confirmImport() {
 }
 
 els.paperSize.addEventListener("change", () => {
-  state.settings.paperSize = els.paperSize.value;
-  const { cols, rows } = getGrid();
-  state.placements = state.placements.filter((item) => item.row < rows && item.col < cols);
+  const currentPage = getCurrentPage();
+  currentPage.settings.paperSize = els.paperSize.value;
+  const { cols, rows } = getGrid(currentPage.settings.paperSize);
+  currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
   renderAll();
 });
 
 els.flowMode.addEventListener("change", () => {
-  state.settings.flowMode = els.flowMode.value;
+  getCurrentPage().settings.flowMode = els.flowMode.value;
   renderAll();
 });
 
 els.gridGap.addEventListener("input", () => {
-  state.settings.gridGap = Number(els.gridGap.value);
+  getCurrentPage().settings.gridGap = Number(els.gridGap.value);
   renderAll();
 });
 
 els.workTitle.addEventListener("input", () => {
-  state.settings.workTitle = els.workTitle.value;
+  state.workTitle = els.workTitle.value;
   saveState();
 });
 
@@ -951,8 +1148,29 @@ els.styleFilter.addEventListener("change", renderInventory);
 els.saveDraftBtn.addEventListener("click", saveDraft);
 els.exportBtn.addEventListener("click", exportPreview);
 els.clearBoardBtn.addEventListener("click", () => {
-  state.placements = [];
+  getCurrentPage().placements = [];
   renderAll();
+});
+
+els.addPageBtn.addEventListener("click", addPage);
+els.duplicatePageBtn.addEventListener("click", duplicatePage);
+els.renamePageBtn.addEventListener("click", renamePage);
+els.deletePageBtn.addEventListener("click", deletePage);
+
+els.pagesTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-page-id]");
+  if (tab) {
+    switchPage(tab.dataset.pageId);
+  }
+});
+
+els.usageTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-usage-tab]");
+  if (tab) {
+    state.usageTab = tab.dataset.usageTab;
+    renderUsage();
+    saveState();
+  }
 });
 
 els.textLayoutBtn.addEventListener("click", openTextLayoutModal);
@@ -1003,7 +1221,9 @@ els.typeList.addEventListener("click", (event) => {
   if (deleteButton) {
     const typeId = deleteButton.dataset.deleteType;
     state.inventory = state.inventory.filter((item) => item.id !== typeId);
-    state.placements = state.placements.filter((item) => item.typeId !== typeId);
+    state.pages.forEach((page) => {
+      page.placements = page.placements.filter((item) => item.typeId !== typeId);
+    });
     if (state.selectedTypeId === typeId) state.selectedTypeId = state.inventory[0]?.id || null;
     renderAll();
     return;
@@ -1043,8 +1263,32 @@ els.draftList.addEventListener("click", (event) => {
   if (loadButton) {
     const draft = state.drafts.find((item) => item.id === loadButton.dataset.loadDraft);
     if (!draft) return;
-    state.settings = structuredClone(draft.settings);
-    state.placements = structuredClone(draft.placements);
+
+    if (draft.pages && draft.pages.length > 0) {
+      state.pages = structuredClone(draft.pages);
+      state.currentPageId = state.pages[0].id;
+    } else {
+      const migratedPage = createDefaultPage("第1页");
+      if (draft.settings) {
+        migratedPage.settings = {
+          paperSize: draft.settings.paperSize || "postcard",
+          flowMode: draft.settings.flowMode || "horizontal",
+          gridGap: draft.settings.gridGap || 8
+        };
+      }
+      if (draft.placements) {
+        migratedPage.placements = draft.placements;
+      }
+      state.pages = [migratedPage];
+      state.currentPageId = migratedPage.id;
+    }
+
+    if (draft.workTitle) {
+      state.workTitle = draft.workTitle;
+    } else if (draft.settings?.workTitle) {
+      state.workTitle = draft.settings.workTitle;
+    }
+
     renderAll();
   }
   if (deleteButton) {
