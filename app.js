@@ -187,7 +187,24 @@ const els = {
   exportConfirmCancel: document.querySelector("#exportConfirmCancel"),
   exportConfirmOk: document.querySelector("#exportConfirmOk"),
   exportConfirmContent: document.querySelector("#exportConfirmContent"),
-  panelTabs: document.querySelector(".panel-tabs")
+  panelTabs: document.querySelector(".panel-tabs"),
+  shortageListBtn: document.querySelector("#shortageListBtn"),
+  shortageListModal: document.querySelector("#shortageListModal"),
+  slClose: document.querySelector("#slClose"),
+  slText: document.querySelector("#slText"),
+  slAnalyze: document.querySelector("#slAnalyze"),
+  slResults: document.querySelector("#slResults"),
+  slMissingList: document.querySelector("#slMissingList"),
+  slLowList: document.querySelector("#slLowList"),
+  slOkList: document.querySelector("#slOkList"),
+  slCancel: document.querySelector("#slCancel"),
+  slDefaultStyle: document.querySelector("#slDefaultStyle"),
+  slDefaultSize: document.querySelector("#slDefaultSize"),
+  slDefaultQuantity: document.querySelector("#slDefaultQuantity"),
+  slDefaultWear: document.querySelector("#slDefaultWear"),
+  slAddAllMissing: document.querySelector("#slAddAllMissing"),
+  slAddAllLow: document.querySelector("#slAddAllLow"),
+  slSummary: document.querySelector(".sl-summary")
 };
 
 function loadState() {
@@ -1640,6 +1657,371 @@ function confirmImport() {
   renderAll();
 }
 
+let slAnalysisResult = null;
+let slAddedItems = new Set();
+
+function countChars(text) {
+  const count = {};
+  for (const ch of text) {
+    if (ch.trim() === "") continue;
+    count[ch] = (count[ch] || 0) + 1;
+  }
+  return count;
+}
+
+function analyzeShortage(text) {
+  const charCount = countChars(text);
+  const usage = getTotalUsage();
+  const results = [];
+
+  for (const [char, needed] of Object.entries(charCount)) {
+    const matchingTypes = state.inventory.filter((item) => item.char === char);
+
+    if (matchingTypes.length === 0) {
+      results.push({
+        char,
+        needed,
+        status: "missing",
+        totalAvailable: 0,
+        totalUsed: 0,
+        types: []
+      });
+      continue;
+    }
+
+    const totalAvailable = matchingTypes.reduce((sum, t) => sum + t.quantity, 0);
+    const totalUsed = matchingTypes.reduce((sum, t) => sum + (usage[t.id] || 0), 0);
+    const remaining = totalAvailable - totalUsed;
+
+    const types = matchingTypes.map((t) => ({
+      id: t.id,
+      style: t.style,
+      size: t.size,
+      quantity: t.quantity,
+      used: usage[t.id] || 0,
+      wear: t.wear
+    }));
+
+    if (remaining >= needed) {
+      results.push({
+        char,
+        needed,
+        status: "ok",
+        totalAvailable,
+        totalUsed,
+        remaining,
+        types
+      });
+    } else {
+      results.push({
+        char,
+        needed,
+        status: "low",
+        totalAvailable,
+        totalUsed,
+        remaining,
+        shortage: needed - remaining,
+        types
+      });
+    }
+  }
+
+  return results.sort((a, b) => {
+    const statusOrder = { missing: 0, low: 1, ok: 2 };
+    if (statusOrder[a.status] !== statusOrder[b.status]) {
+      return statusOrder[a.status] - statusOrder[b.status];
+    }
+    return b.needed - a.needed;
+  });
+}
+
+function openShortageListModal() {
+  els.shortageListModal.hidden = false;
+  els.slText.value = "";
+  els.slResults.hidden = true;
+  els.slDefaultStyle.value = "";
+  els.slDefaultSize.value = "24";
+  els.slDefaultQuantity.value = "3";
+  els.slDefaultWear.value = "微磨";
+  document.querySelector('input[name="slDir"][value="horizontal"]').checked = true;
+  slAnalysisResult = null;
+  slAddedItems.clear();
+  els.slText.focus();
+}
+
+function closeShortageListModal() {
+  els.shortageListModal.hidden = true;
+  slAnalysisResult = null;
+  slAddedItems.clear();
+}
+
+function analyzeShortageText() {
+  const text = els.slText.value;
+  if (!text.trim()) {
+    alert("请输入待排正文内容");
+    return;
+  }
+
+  const results = analyzeShortage(text);
+  slAnalysisResult = results;
+  slAddedItems.clear();
+
+  const missingCount = results.filter((r) => r.status === "missing").length;
+  const lowCount = results.filter((r) => r.status === "low").length;
+  const okCount = results.filter((r) => r.status === "ok").length;
+
+  let summaryHtml = "";
+  if (missingCount) summaryHtml += `<span class="sl-summary-item"><span class="dot red"></span>缺字 ${missingCount} 种</span>`;
+  if (lowCount) summaryHtml += `<span class="sl-summary-item"><span class="dot gold"></span>不足 ${lowCount} 种</span>`;
+  if (okCount) summaryHtml += `<span class="sl-summary-item"><span class="dot green"></span>充足 ${okCount} 种</span>`;
+  summaryHtml += `<span class="sl-summary-item">共 ${Object.keys(countChars(text)).length} 种字，${text.replace(/\s/g, "").length} 个字</span>`;
+  els.slSummary.innerHTML = summaryHtml;
+
+  renderShortageList("missing", results.filter((r) => r.status === "missing"));
+  renderShortageList("low", results.filter((r) => r.status === "low"));
+  renderShortageList("ok", results.filter((r) => r.status === "ok"));
+
+  els.slResults.hidden = false;
+}
+
+function renderShortageList(type, items) {
+  const listEl = type === "missing" ? els.slMissingList : type === "low" ? els.slLowList : els.slOkList;
+  const defaultStyle = els.slDefaultStyle.value.trim();
+  const defaultSize = Number(els.slDefaultSize.value) || 24;
+  const defaultQuantity = Number(els.slDefaultQuantity.value) || 3;
+  const defaultWear = els.slDefaultWear.value;
+
+  listEl.innerHTML = items
+    .map((item) => {
+      const isMissing = type === "missing";
+      const isLow = type === "low";
+      const isOk = type === "ok";
+      const itemKey = `${type}-${item.char}`;
+      const isAdded = slAddedItems.has(itemKey);
+
+      let infoHtml = "";
+      if (isMissing) {
+        infoHtml = `<strong>${escapeHtml(item.char)}（需${item.needed}枚）</strong><span>字模库中无此字，需采购</span>`;
+      } else if (isLow) {
+        infoHtml = `<strong>${escapeHtml(item.char)}（需${item.needed}枚）</strong><span>库存${item.totalAvailable}，已用${item.totalUsed}，剩余${item.remaining}，缺${item.shortage}枚</span>`;
+      } else {
+        infoHtml = `<strong>${escapeHtml(item.char)}（需${item.needed}枚）</strong><span>库存${item.totalAvailable}，已用${item.totalUsed}，剩余${item.remaining}，充足</span>`;
+      }
+
+      let quantityHtml = "";
+      let buttonHtml = "";
+
+      if (isMissing) {
+        const quantity = item.needed;
+        quantityHtml = `
+          <div class="sl-item-quantity">
+            <span>数量</span>
+            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity="${item.char}" />
+          </div>
+        `;
+        buttonHtml = `
+          <button class="sl-item-add-btn ${isAdded ? "added" : ""}" type="button" data-sl-add-missing="${item.char}" ${isAdded ? "disabled" : ""}>
+            ${isAdded ? "已加入" : "加入字模库"}
+          </button>
+        `;
+      } else if (isLow) {
+        const quantity = item.shortage;
+        quantityHtml = `
+          <div class="sl-item-quantity">
+            <span>补充</span>
+            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity="${item.char}" />
+          </div>
+        `;
+        buttonHtml = `
+          <button class="sl-item-add-btn ${isAdded ? "added" : ""}" type="button" data-sl-add-low="${item.char}" ${isAdded ? "disabled" : ""}>
+            ${isAdded ? "已补充" : "补充采购"}
+          </button>
+        `;
+      }
+
+      return `
+        <div class="sl-item">
+          <div class="sl-item-glyph">${escapeHtml(item.char)}</div>
+          <div class="sl-item-info">${infoHtml}</div>
+          ${quantityHtml}
+          ${buttonHtml}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function addMissingToInventory(char) {
+  const style = els.slDefaultStyle.value.trim();
+  if (!style) {
+    alert("请先设置默认风格");
+    els.slDefaultStyle.focus();
+    return;
+  }
+
+  const size = Number(els.slDefaultSize.value) || 24;
+  const wear = els.slDefaultWear.value;
+  const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+  const quantity = quantityInput ? Number(quantityInput.value) : 3;
+
+  const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
+  if (existingItem) {
+    if (!confirm(`字模库中已存在「${char}·${style}」，是否增加数量？`)) return;
+    pushHistory();
+    existingItem.quantity += quantity;
+  } else {
+    pushHistory();
+    const item = {
+      id: crypto.randomUUID(),
+      char,
+      style,
+      size,
+      quantity,
+      wear
+    };
+    state.inventory.unshift(item);
+    state.selectedTypeId = item.id;
+  }
+
+  slAddedItems.add(`missing-${char}`);
+  renderShortageList("missing", slAnalysisResult.filter((r) => r.status === "missing"));
+  renderAll();
+  alert(`已添加「${char}」${quantity}枚到字模库`);
+}
+
+function addLowToInventory(char) {
+  const style = els.slDefaultStyle.value.trim();
+  if (!style) {
+    alert("请先设置默认风格");
+    els.slDefaultStyle.focus();
+    return;
+  }
+
+  const size = Number(els.slDefaultSize.value) || 24;
+  const wear = els.slDefaultWear.value;
+  const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+  const quantity = quantityInput ? Number(quantityInput.value) : 1;
+
+  const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
+  pushHistory();
+
+  if (existingItem) {
+    existingItem.quantity += quantity;
+  } else {
+    const item = {
+      id: crypto.randomUUID(),
+      char,
+      style,
+      size,
+      quantity,
+      wear
+    };
+    state.inventory.unshift(item);
+    state.selectedTypeId = item.id;
+  }
+
+  slAddedItems.add(`low-${char}`);
+  renderShortageList("low", slAnalysisResult.filter((r) => r.status === "low"));
+  renderAll();
+  alert(`已为「${char}」补充${quantity}枚`);
+}
+
+function addAllMissing() {
+  const missingItems = slAnalysisResult.filter((r) => r.status === "missing");
+  if (missingItems.length === 0) return;
+
+  const style = els.slDefaultStyle.value.trim();
+  if (!style) {
+    alert("请先设置默认风格");
+    els.slDefaultStyle.focus();
+    return;
+  }
+
+  const size = Number(els.slDefaultSize.value) || 24;
+  const wear = els.slDefaultWear.value;
+
+  pushHistory();
+  let addedCount = 0;
+
+  for (const item of missingItems) {
+    const char = item.char;
+    if (slAddedItems.has(`missing-${char}`)) continue;
+
+    const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+    const quantity = quantityInput ? Number(quantityInput.value) : item.needed;
+
+    const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
+    if (existingItem) {
+      existingItem.quantity += quantity;
+    } else {
+      const newItem = {
+        id: crypto.randomUUID(),
+        char,
+        style,
+        size,
+        quantity,
+        wear
+      };
+      state.inventory.unshift(newItem);
+    }
+
+    slAddedItems.add(`missing-${char}`);
+    addedCount++;
+  }
+
+  renderShortageList("missing", slAnalysisResult.filter((r) => r.status === "missing"));
+  renderAll();
+  alert(`已批量添加 ${addedCount} 种缺字到字模库`);
+}
+
+function addAllLow() {
+  const lowItems = slAnalysisResult.filter((r) => r.status === "low");
+  if (lowItems.length === 0) return;
+
+  const style = els.slDefaultStyle.value.trim();
+  if (!style) {
+    alert("请先设置默认风格");
+    els.slDefaultStyle.focus();
+    return;
+  }
+
+  const size = Number(els.slDefaultSize.value) || 24;
+  const wear = els.slDefaultWear.value;
+
+  pushHistory();
+  let addedCount = 0;
+
+  for (const item of lowItems) {
+    const char = item.char;
+    if (slAddedItems.has(`low-${char}`)) continue;
+
+    const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+    const quantity = quantityInput ? Number(quantityInput.value) : item.shortage;
+
+    const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
+    if (existingItem) {
+      existingItem.quantity += quantity;
+    } else {
+      const newItem = {
+        id: crypto.randomUUID(),
+        char,
+        style,
+        size,
+        quantity,
+        wear
+      };
+      state.inventory.unshift(newItem);
+    }
+
+    slAddedItems.add(`low-${char}`);
+    addedCount++;
+  }
+
+  renderShortageList("low", slAnalysisResult.filter((r) => r.status === "low"));
+  renderAll();
+  alert(`已批量补充 ${addedCount} 种字模`);
+}
+
 els.paperSize.addEventListener("change", () => {
   const currentPage = getCurrentPage();
   const { cols, rows } = getGrid(els.paperSize.value);
@@ -1772,6 +2154,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.importModal.hidden) closeImportModal();
   if (event.key === "Escape" && !els.templateLibraryModal.hidden) closeTemplateLibraryModal();
   if (event.key === "Escape" && !els.exportConfirmModal.hidden) closeExportConfirm();
+  if (event.key === "Escape" && !els.shortageListModal.hidden) closeShortageListModal();
 });
 
 els.proofreadBtn.addEventListener("click", () => {
@@ -1831,6 +2214,29 @@ els.exportConfirmOk.addEventListener("click", () => {
 
 els.exportConfirmModal.addEventListener("click", (event) => {
   if (event.target === els.exportConfirmModal) closeExportConfirm();
+});
+
+els.shortageListBtn.addEventListener("click", openShortageListModal);
+els.slClose.addEventListener("click", closeShortageListModal);
+els.slCancel.addEventListener("click", closeShortageListModal);
+els.slAnalyze.addEventListener("click", analyzeShortageText);
+els.slAddAllMissing.addEventListener("click", addAllMissing);
+els.slAddAllLow.addEventListener("click", addAllLow);
+
+els.shortageListModal.addEventListener("click", (event) => {
+  if (event.target === els.shortageListModal) closeShortageListModal();
+
+  const addMissingBtn = event.target.closest("[data-sl-add-missing]");
+  if (addMissingBtn) {
+    addMissingToInventory(addMissingBtn.dataset.slAddMissing);
+    return;
+  }
+
+  const addLowBtn = event.target.closest("[data-sl-add-low]");
+  if (addLowBtn) {
+    addLowToInventory(addLowBtn.dataset.slAddLow);
+    return;
+  }
 });
 
 els.typeList.addEventListener("click", (event) => {

@@ -1480,3 +1480,286 @@ h3 {
   font-size: 11px;
   line-height: 1.5;
 }
+
+.shortage-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.sl-input-label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sl-input-label textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: var(--ink);
+  padding: 10px;
+  outline: none;
+  font: inherit;
+  resize: vertical;
+}
+
+.sl-input-label textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(54, 95, 125, 0.15);
+}
+
+.sl-direction {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sl-direction > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sl-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sl-batch-settings {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffdf8;
+}
+
+.sl-batch-settings h3 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sl-batch-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.sl-batch-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sl-batch-fields input,
+.sl-batch-fields select {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.sl-results {
+  display: grid;
+  gap: 16px;
+}
+
+.sl-results[hidden] {
+  display: none;
+}
+
+.sl-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  font-size: 13px;
+}
+
+.sl-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sl-summary-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sl-summary-item .dot.green {
+  background: var(--green);
+}
+
+.sl-summary-item .dot.gold {
+  background: var(--gold);
+}
+
+.sl-summary-item .dot.red {
+  background: var(--red);
+}
+
+.sl-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  overflow: hidden;
+}
+
+.sl-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--line);
+}
+
+.sl-section-head h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.sl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sl-dot.green {
+  background: var(--green);
+}
+
+.sl-dot.gold {
+  background: var(--gold);
+}
+
+.sl-dot.red {
+  background: var(--red);
+}
+
+.sl-add-all {
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sl-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.sl-list:empty::after {
+  content: "暂无";
+  display: block;
+  text-align: center;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sl-item {
+  display: grid;
+  grid-template-columns: 40px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fffdf8;
+}
+
+.sl-item-glyph {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  aspect-ratio: 1;
+  border: 1px solid #2f2921;
+  background: #2f2921;
+  color: #f8ead2;
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.sl-item-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sl-item-info strong {
+  font-size: 14px;
+}
+
+.sl-item-info span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sl-item-quantity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sl-item-quantity input {
+  width: 56px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.sl-item-add-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sl-item-add-btn.added {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .sl-batch-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sl-item {
+    grid-template-columns: 36px 1fr auto;
+  }
+
+  .sl-item-quantity {
+    grid-column: span 2;
+    justify-content: flex-end;
+  }
+
+  .sl-item-add-btn {
+    grid-column: 3;
+  }
+}
