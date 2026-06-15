@@ -912,6 +912,24 @@ function adjustColorDepth(baseRgb, depthPercent) {
   };
 }
 
+function createSeededRandom(seed) {
+  let s = seed;
+  return function () {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+function hashStringToSeed(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash) + 1;
+}
+
 function getWearEffects(wear) {
   switch (wear) {
     case "新":
@@ -949,22 +967,23 @@ function getWearEffects(wear) {
   }
 }
 
-function drawWornRect(ctx, x, y, w, h, effects, inkRgb) {
+function drawWornRect(ctx, x, y, w, h, effects, inkRgb, randomFn = Math.random) {
   const { edgeRoughness, cornerChamfer } = effects;
+  const rnd = randomFn;
   ctx.save();
   ctx.beginPath();
 
   const c = Math.min(cornerChamfer, w / 4, h / 4);
 
   const points = [
-    { x: x + c + (Math.random() - 0.5) * edgeRoughness, y: y + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + w - c + (Math.random() - 0.5) * edgeRoughness, y: y + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + w + (Math.random() - 0.5) * edgeRoughness, y: y + c + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + w + (Math.random() - 0.5) * edgeRoughness, y: y + h - c + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + w - c + (Math.random() - 0.5) * edgeRoughness, y: y + h + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + c + (Math.random() - 0.5) * edgeRoughness, y: y + h + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + (Math.random() - 0.5) * edgeRoughness, y: y + h - c + (Math.random() - 0.5) * edgeRoughness },
-    { x: x + (Math.random() - 0.5) * edgeRoughness, y: y + c + (Math.random() - 0.5) * edgeRoughness }
+    { x: x + c + (rnd() - 0.5) * edgeRoughness, y: y + (rnd() - 0.5) * edgeRoughness },
+    { x: x + w - c + (rnd() - 0.5) * edgeRoughness, y: y + (rnd() - 0.5) * edgeRoughness },
+    { x: x + w + (rnd() - 0.5) * edgeRoughness, y: y + c + (rnd() - 0.5) * edgeRoughness },
+    { x: x + w + (rnd() - 0.5) * edgeRoughness, y: y + h - c + (rnd() - 0.5) * edgeRoughness },
+    { x: x + w - c + (rnd() - 0.5) * edgeRoughness, y: y + h + (rnd() - 0.5) * edgeRoughness },
+    { x: x + c + (rnd() - 0.5) * edgeRoughness, y: y + h + (rnd() - 0.5) * edgeRoughness },
+    { x: x + (rnd() - 0.5) * edgeRoughness, y: y + h - c + (rnd() - 0.5) * edgeRoughness },
+    { x: x + (rnd() - 0.5) * edgeRoughness, y: y + c + (rnd() - 0.5) * edgeRoughness }
   ];
 
   ctx.moveTo(points[0].x, points[0].y);
@@ -985,12 +1004,12 @@ function drawWornRect(ctx, x, y, w, h, effects, inkRgb) {
     ctx.globalCompositeOperation = "destination-out";
     const noiseDensity = Math.floor(w * h * effects.innerNoise * 0.02);
     for (let i = 0; i < noiseDensity; i++) {
-      const nx = x + Math.random() * w;
-      const ny = y + Math.random() * h;
-      const nr = Math.random() * 1.5 + 0.3;
+      const nx = x + rnd() * w;
+      const ny = y + rnd() * h;
+      const nr = rnd() * 1.5 + 0.3;
       ctx.beginPath();
       ctx.arc(nx, ny, nr, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.4 + 0.1})`;
+      ctx.fillStyle = `rgba(0,0,0,${rnd() * 0.4 + 0.1})`;
       ctx.fill();
     }
     ctx.globalCompositeOperation = "source-over";
@@ -999,12 +1018,12 @@ function drawWornRect(ctx, x, y, w, h, effects, inkRgb) {
   if (effects.spotCount > 0) {
     ctx.globalCompositeOperation = "destination-out";
     for (let i = 0; i < effects.spotCount; i++) {
-      const sx = x + Math.random() * w;
-      const sy = y + Math.random() * h;
-      const sr = Math.random() * 2 + 0.8;
+      const sx = x + rnd() * w;
+      const sy = y + rnd() * h;
+      const sr = rnd() * 2 + 0.8;
       ctx.beginPath();
       ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.5 + 0.3})`;
+      ctx.fillStyle = `rgba(0,0,0,${rnd() * 0.5 + 0.3})`;
       ctx.fill();
     }
     ctx.globalCompositeOperation = "source-over";
@@ -1020,10 +1039,15 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
   const gap = page.settings.gridGap;
   const margin = 48;
   const { width, height } = getExportCanvasSize(page);
+  const isVertical = page.settings.flowMode === "vertical";
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
+
+  const seedKey = `${page.id}_${opts.paperColor}_${opts.inkDepth}_${opts.showBorder}_${opts.showInnerGrid}_${pageIndex}_${totalPages}`;
+  const seed = hashStringToSeed(seedKey);
+  const rnd = createSeededRandom(seed);
 
   const paperRgb = hexToRgb(opts.paperColor);
   const baseInk = hexToRgb("#2f2921");
@@ -1035,13 +1059,13 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
   ctx.fillRect(0, 0, width, height);
 
   for (let i = 0; i < Math.floor(width * height * 0.00008); i++) {
-    const nx = Math.random() * width;
-    const ny = Math.random() * height;
-    const nr = Math.random() * 1.2 + 0.2;
-    const variation = (Math.random() - 0.5) * 20;
+    const nx = rnd() * width;
+    const ny = rnd() * height;
+    const nr = rnd() * 1.2 + 0.2;
+    const variation = (rnd() - 0.5) * 20;
     ctx.beginPath();
     ctx.arc(nx, ny, nr, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${Math.max(0, paperRgb.r - 30 + variation)}, ${Math.max(0, paperRgb.g - 30 + variation)}, ${Math.max(0, paperRgb.b - 30 + variation)}, ${Math.random() * 0.15 + 0.05})`;
+    ctx.fillStyle = `rgba(${Math.max(0, paperRgb.r - 30 + variation)}, ${Math.max(0, paperRgb.g - 30 + variation)}, ${Math.max(0, paperRgb.b - 30 + variation)}, ${rnd() * 0.15 + 0.05})`;
     ctx.fill();
   }
 
@@ -1051,7 +1075,7 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
     ctx.lineJoin = "miter";
     const borderInset = 18;
     ctx.beginPath();
-    const jitter = () => (Math.random() - 0.5) * 1.5;
+    const jitter = () => (rnd() - 0.5) * 1.5;
     ctx.moveTo(borderInset + jitter(), borderInset + jitter());
     ctx.lineTo(width - borderInset + jitter(), borderInset + jitter());
     ctx.lineTo(width - borderInset + jitter(), height - borderInset + jitter());
@@ -1071,18 +1095,34 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
     ctx.stroke();
   }
 
-  const titleArea = { x: margin, y: 50, w: width - margin * 2, h: 30 };
-
-  ctx.fillStyle = `rgb(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b})`;
-  ctx.font = "bold 28px sans-serif";
   const pageInfo = totalPages > 1 ? `（${pageIndex + 1}/${totalPages}）${page.name}` : "";
   const fullTitle = `${title || "未命名作品"}${pageInfo}`;
+  ctx.fillStyle = `rgb(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b})`;
   ctx.globalAlpha = opts.inkDepth / 100;
-  ctx.fillText(fullTitle, titleArea.x, titleArea.y);
+
+  if (isVertical) {
+    ctx.font = "bold 24px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const titleX = width - margin - 14;
+    const titleY = margin;
+    const chars = fullTitle.split("");
+    const lineHeight = 32;
+    chars.forEach((ch, i) => {
+      ctx.fillText(ch, titleX + (rnd() - 0.5) * 0.8, titleY + i * lineHeight + (rnd() - 0.5) * 0.8);
+    });
+  } else {
+    ctx.font = "bold 28px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    const titleX = margin;
+    const titleY = 50;
+    ctx.fillText(fullTitle, titleX, titleY);
+  }
   ctx.globalAlpha = 1;
 
-  const gridOriginX = margin;
-  const gridOriginY = margin + 45;
+  const gridOriginX = isVertical ? margin : margin;
+  const gridOriginY = isVertical ? margin : margin + 45;
   const gridWidth = cols * cell + (cols - 1) * gap;
   const gridHeight = rows * cell + (rows - 1) * gap;
 
@@ -1107,16 +1147,19 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
     ctx.restore();
   }
 
-  page.placements.forEach((placement) => {
+  page.placements.forEach((placement, idx) => {
     const type = state.inventory.find((item) => item.id === placement.typeId);
     if (!type) return;
     const x = gridOriginX + placement.col * (cell + gap);
     const y = gridOriginY + placement.row * (cell + gap);
     const wear = getWearEffects(type.wear);
 
+    const charSeed = hashStringToSeed(`${seedKey}_${placement.col}_${placement.row}_${type.id}`);
+    const charRnd = createSeededRandom(charSeed);
+
     ctx.save();
     ctx.globalAlpha = wear.opacity * (0.75 + (opts.inkDepth / 100) * 0.25);
-    drawWornRect(ctx, x, y, cell, cell, wear, inkRgb);
+    drawWornRect(ctx, x, y, cell, cell, wear, inkRgb, charRnd);
     ctx.restore();
 
     ctx.save();
@@ -1127,16 +1170,12 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
 
     const centerX = x + cell / 2;
     const centerY = y + cell / 2;
-    const charOffsetX = (Math.random() - 0.5) * (wear.edgeRoughness * 0.3);
-    const charOffsetY = (Math.random() - 0.5) * (wear.edgeRoughness * 0.3);
-    const charRotate = (Math.random() - 0.5) * (wear.edgeRoughness * 0.015);
+    const charOffsetX = (charRnd() - 0.5) * (wear.edgeRoughness * 0.3);
+    const charOffsetY = (charRnd() - 0.5) * (wear.edgeRoughness * 0.3);
+    const charRotate = (charRnd() - 0.5) * (wear.edgeRoughness * 0.015);
 
     ctx.translate(centerX + charOffsetX, centerY + charOffsetY);
-    if (page.settings.flowMode === "vertical") {
-      ctx.rotate(charRotate);
-    } else {
-      ctx.rotate(charRotate);
-    }
+    ctx.rotate(charRotate);
 
     ctx.fillStyle = `rgb(${textInkRgb.r}, ${textInkRgb.g}, ${textInkRgb.b})`;
     ctx.fillText(type.char, 0, 0);
@@ -1145,12 +1184,12 @@ function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
       ctx.globalCompositeOperation = "destination-out";
       const noiseCount = Math.floor(wear.innerNoise * 15);
       for (let i = 0; i < noiseCount; i++) {
-        const nx = (Math.random() - 0.5) * cell * 0.7;
-        const ny = (Math.random() - 0.5) * cell * 0.7;
-        const nr = Math.random() * 1.2 + 0.3;
+        const nx = (charRnd() - 0.5) * cell * 0.7;
+        const ny = (charRnd() - 0.5) * cell * 0.7;
+        const nr = charRnd() * 1.2 + 0.3;
         ctx.beginPath();
         ctx.arc(nx, ny, nr, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.3 + 0.15})`;
+        ctx.fillStyle = `rgba(0,0,0,${charRnd() * 0.3 + 0.15})`;
         ctx.fill();
       }
       ctx.globalCompositeOperation = "source-over";
@@ -1250,16 +1289,21 @@ function closePrintPreview() {
 
 function downloadPrintPage(pageId) {
   const page = getPageById(pageId) || getCurrentPage();
-  const pageIndex = getPageIndex(page.id);
-  const totalPages = state.pages.length;
   const title = state.workTitle;
 
-  const canvas = renderPageToCanvas(page, title, pageIndex, totalPages, {
-    paperColor: printPreviewState.paperColor,
-    inkDepth: printPreviewState.inkDepth,
-    showBorder: printPreviewState.showBorder,
-    showInnerGrid: printPreviewState.showInnerGrid
-  });
+  let canvas;
+  if (pageId === printPreviewState.currentPageId) {
+    canvas = els.ppPreviewCanvas;
+  } else {
+    const pageIndex = getPageIndex(page.id);
+    const totalPages = state.pages.length;
+    canvas = renderPageToCanvas(page, title, pageIndex, totalPages, {
+      paperColor: printPreviewState.paperColor,
+      inkDepth: printPreviewState.inkDepth,
+      showBorder: printPreviewState.showBorder,
+      showInnerGrid: printPreviewState.showInnerGrid
+    });
+  }
 
   const link = document.createElement("a");
   link.download = `${title || "movable-type"}_${page.name}.png`;
@@ -1269,9 +1313,24 @@ function downloadPrintPage(pageId) {
 
 function downloadPrintAllPages() {
   const totalPages = state.pages.length;
+  const currentId = printPreviewState.currentPageId;
   state.pages.forEach((page, index) => {
     setTimeout(() => {
-      downloadPrintPage(page.id);
+      if (page.id === currentId) {
+        downloadPrintPage(page.id);
+      } else {
+        const title = state.workTitle;
+        const canvas = renderPageToCanvas(page, title, index, totalPages, {
+          paperColor: printPreviewState.paperColor,
+          inkDepth: printPreviewState.inkDepth,
+          showBorder: printPreviewState.showBorder,
+          showInnerGrid: printPreviewState.showInnerGrid
+        });
+        const link = document.createElement("a");
+        link.download = `${title || "movable-type"}_${page.name}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
     }, index * 350);
   });
 }
