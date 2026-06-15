@@ -1746,7 +1746,13 @@ els.importModal.addEventListener("click", (event) => {
 els.undoBtn.addEventListener("click", undo);
 els.redoBtn.addEventListener("click", redo);
 
+function isEditingText(eventTarget) {
+  return eventTarget instanceof HTMLElement && Boolean(eventTarget.closest("input, textarea, select, [contenteditable='true']"));
+}
+
 document.addEventListener("keydown", (event) => {
+  if (isEditingText(event.target)) return;
+
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const modKey = isMac ? event.metaKey : event.ctrlKey;
 
