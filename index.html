@@ -14,7 +14,8 @@
           <h1>活字排版工坊</h1>
         </div>
         <div class="top-actions">
-          <button id="textLayoutBtn" class="gold">文本落版</button>
+          <button id="templateLibraryBtn" class="gold">版式模板库</button>
+          <button id="textLayoutBtn">文本落版</button>
           <button id="saveDraftBtn" class="primary">保存草稿</button>
           <button id="exportBtn">导出预览图</button>
           <button id="clearBoardBtn">清空版面</button>
@@ -84,8 +85,12 @@
             <div>
               <strong id="selectedTypeLabel">未选择字模</strong>
               <span>点击字模后，在版面格子中落字，也可拖拽字模到版面。</span>
+              <span id="activeTemplateLabel" class="template-label"></span>
             </div>
-            <div id="shortageBadge" class="badge ok">数量充足</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="clearTemplateBtn" class="mini-btn" type="button" hidden title="清除模板">清除模板</button>
+              <div id="shortageBadge" class="badge ok">数量充足</div>
+            </div>
           </div>
           <div id="stage" class="stage" aria-label="排版画布"></div>
         </section>
@@ -162,6 +167,22 @@
         <div class="modal-foot">
           <button id="importCancel" type="button">取消</button>
           <button id="importConfirm" class="primary" type="button" disabled>确认导入</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="templateLibraryModal" class="modal-overlay" hidden>
+      <div class="modal template-modal">
+        <div class="modal-head">
+          <h2>版式模板库</h2>
+          <button id="tlLibraryClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-hint">选择模板后，将应用推荐的纸张、方向、网格间距和预留落字位置，不会覆盖字模库。模板应用后仍可继续手动编辑。</p>
+          <div id="templateList" class="template-list"></div>
+        </div>
+        <div class="modal-foot">
+          <button id="tlLibraryCancel" type="button">取消</button>
         </div>
       </div>
     </div>

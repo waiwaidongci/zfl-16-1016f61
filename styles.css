@@ -856,3 +856,127 @@ h3 {
   font-size: 12px;
   font-weight: 500;
 }
+
+.cell.template-cell:not(.used) {
+  background: rgba(183, 134, 44, 0.15);
+  border-color: rgba(183, 134, 44, 0.4);
+}
+
+.template-label {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 3px 10px;
+  background: rgba(183, 134, 44, 0.15);
+  color: var(--gold);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modal-hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.template-modal {
+  width: min(820px, calc(100vw - 32px));
+}
+
+.template-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.template-card {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 12px;
+  transition: all 0.15s ease;
+}
+
+.template-card:hover {
+  border-color: var(--blue);
+  box-shadow: 0 8px 18px rgba(34, 32, 28, 0.08);
+}
+
+.template-card.active {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 2px rgba(183, 134, 44, 0.2);
+}
+
+.template-preview {
+  display: grid;
+  place-items: center;
+  background: #fffaf1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 180px;
+}
+
+.template-preview-grid {
+  display: grid;
+  gap: 1px;
+}
+
+.preview-cell {
+  background: rgba(47, 41, 33, 0.05);
+  border-radius: 1px;
+}
+
+.preview-cell.preview-active {
+  background: rgba(183, 134, 44, 0.4);
+}
+
+.template-info {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.template-info strong {
+  font-size: 15px;
+}
+
+.template-info > span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.template-meta {
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: rgba(54, 95, 125, 0.08);
+  border-radius: 6px;
+  color: var(--blue) !important;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.apply-template-btn {
+  grid-column: span 2;
+  padding: 10px;
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .template-list {
+    grid-template-columns: 1fr;
+  }
+
+  .template-card {
+    grid-template-columns: 1fr;
+  }
+
+  .apply-template-btn {
+    grid-column: span 1;
+  }
+}

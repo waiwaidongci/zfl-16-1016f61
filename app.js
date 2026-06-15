@@ -14,6 +14,7 @@ const defaultState = {
   selectedTypeId: starterInventory[0].id,
   placements: [],
   drafts: [],
+  activeTemplateId: null,
   settings: {
     paperSize: "postcard",
     flowMode: "horizontal",
@@ -65,7 +66,14 @@ const els = {
   importCancel: document.querySelector("#importCancel"),
   importConfirm: document.querySelector("#importConfirm"),
   importSummary: document.querySelector("#importSummary"),
-  importErrors: document.querySelector("#importErrors")
+  importErrors: document.querySelector("#importErrors"),
+  templateLibraryBtn: document.querySelector("#templateLibraryBtn"),
+  templateLibraryModal: document.querySelector("#templateLibraryModal"),
+  tlLibraryClose: document.querySelector("#tlLibraryClose"),
+  tlLibraryCancel: document.querySelector("#tlLibraryCancel"),
+  templateList: document.querySelector("#templateList"),
+  activeTemplateLabel: document.querySelector("#activeTemplateLabel"),
+  clearTemplateBtn: document.querySelector("#clearTemplateBtn")
 };
 
 function loadState() {
@@ -76,6 +84,7 @@ function loadState() {
     return {
       ...structuredClone(defaultState),
       ...parsed,
+      activeTemplateId: parsed.activeTemplateId || null,
       settings: { ...defaultState.settings, ...parsed.settings }
     };
   } catch {
@@ -157,6 +166,7 @@ function renderInventory() {
 function renderStage() {
   const { cols, rows } = getGrid();
   const map = new Map(state.placements.map((item) => [placementKey(item.row, item.col), item]));
+  const templatePositions = state.activeTemplateId ? new Set(getTemplatePositions(state.activeTemplateId).map((p) => placementKey(p.row, p.col))) : new Set();
   els.stage.className = `stage ${state.settings.paperSize}`;
   els.stage.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   els.stage.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
@@ -164,17 +174,106 @@ function renderStage() {
   const cells = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const placement = map.get(placementKey(row, col));
+      const key = placementKey(row, col);
+      const placement = map.get(key);
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
       const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
+      const templateCell = templatePositions.has(key) ? "template-cell" : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCell}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
           ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
     }
   }
   els.stage.innerHTML = cells.join("");
+}
+
+function renderActiveTemplateLabel() {
+  if (state.activeTemplateId) {
+    const template = layoutTemplates.find((t) => t.id === state.activeTemplateId);
+    els.activeTemplateLabel.textContent = template ? `当前模板：${template.name}` : "";
+    els.clearTemplateBtn.hidden = false;
+  } else {
+    els.activeTemplateLabel.textContent = "";
+    els.clearTemplateBtn.hidden = true;
+  }
+}
+
+function openTemplateLibraryModal() {
+  els.templateLibraryModal.hidden = false;
+  renderTemplateList();
+}
+
+function closeTemplateLibraryModal() {
+  els.templateLibraryModal.hidden = true;
+}
+
+function renderTemplateList() {
+  const { cols, rows } = getGrid();
+  els.templateList.innerHTML = layoutTemplates
+    .map((template) => {
+      const positions = template.getPositions(cols, rows);
+      const isActive = state.activeTemplateId === template.id;
+      return `
+        <article class="template-card ${isActive ? "active" : ""}" data-template-id="${template.id}">
+          <div class="template-preview">
+            ${renderTemplatePreview(template, cols, rows)}
+          </div>
+          <div class="template-info">
+            <strong>${escapeHtml(template.name)}</strong>
+            <span>${escapeHtml(template.description)}</span>
+            <span class="template-meta">
+              推荐：${template.recommended.paperSize === "postcard" ? "明信片" : template.recommended.paperSize === "bookmark" ? "书签" : "方形小笺"} · 
+              ${template.recommended.flowMode === "horizontal" ? "横排" : "竖排"} · 
+              网格${template.recommended.gridGap}px · 
+              ${positions.length}个预留位
+            </span>
+          </div>
+          <button class="primary apply-template-btn" type="button" data-apply-template="${template.id}">
+            ${isActive ? "重新应用" : "应用模板"}
+          </button>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderTemplatePreview(template, cols, rows) {
+  const positions = new Set(template.getPositions(cols, rows).map((p) => placementKey(p.row, p.col)));
+  const cellSize = Math.min(180 / cols, 180 / rows);
+  let html = `<div class="template-preview-grid" style="grid-template-columns: repeat(${cols}, ${cellSize}px); grid-template-rows: repeat(${rows}, ${cellSize}px);">`;
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const key = placementKey(r, c);
+      const active = positions.has(key) ? "preview-active" : "";
+      html += `<div class="preview-cell ${active}"></div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function applyTemplate(templateId) {
+  const template = layoutTemplates.find((t) => t.id === templateId);
+  if (!template) return;
+
+  state.activeTemplateId = templateId;
+  state.settings.paperSize = template.recommended.paperSize;
+  state.settings.flowMode = template.recommended.flowMode;
+  state.settings.gridGap = template.recommended.gridGap;
+  state.placements = [];
+
+  const { cols, rows } = getGrid();
+  state.placements = state.placements.filter((item) => item.row < rows && item.col < cols);
+
+  closeTemplateLibraryModal();
+  renderAll();
+}
+
+function clearTemplate() {
+  state.activeTemplateId = null;
+  renderAll();
 }
 
 function renderUsage() {
@@ -422,6 +521,7 @@ function renderAll() {
   renderStage();
   renderUsage();
   renderDrafts();
+  renderActiveTemplateLabel();
 }
 
 function placeType(row, col, typeId = state.selectedTypeId) {
@@ -517,6 +617,84 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+const layoutTemplates = [
+  {
+    id: "centered",
+    name: "居中题签",
+    description: "文字集中于中央区域，四周留白，适合题字落款",
+    recommended: { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 },
+    getPositions: (cols, rows) => {
+      const marginX = Math.floor(cols * 0.25);
+      const marginY = Math.floor(rows * 0.25);
+      const positions = [];
+      for (let r = marginY; r < rows - marginY; r++) {
+        for (let c = marginX; c < cols - marginX; c++) {
+          positions.push({ row: r, col: c });
+        }
+      }
+      return positions;
+    }
+  },
+  {
+    id: "topbottom",
+    name: "上下留白",
+    description: "上下留有空白，文字在中间区域，适合书签",
+    recommended: { paperSize: "bookmark", flowMode: "vertical", gridGap: 6 },
+    getPositions: (cols, rows) => {
+      const marginY = Math.floor(rows * 0.2);
+      const positions = [];
+      for (let r = marginY; r < rows - marginY; r++) {
+        for (let c = 0; c < cols; c++) {
+          positions.push({ row: r, col: c });
+        }
+      }
+      return positions;
+    }
+  },
+  {
+    id: "border",
+    name: "边框题款",
+    description: "文字沿边框排列，中间大面积留白，适合方形小笺",
+    recommended: { paperSize: "square", flowMode: "horizontal", gridGap: 10 },
+    getPositions: (cols, rows) => {
+      const positions = [];
+      for (let c = 0; c < cols; c++) {
+        positions.push({ row: 0, col: c });
+        positions.push({ row: rows - 1, col: c });
+      }
+      for (let r = 1; r < rows - 1; r++) {
+        positions.push({ row: r, col: 0 });
+        positions.push({ row: r, col: cols - 1 });
+      }
+      return positions;
+    }
+  },
+  {
+    id: "scattered",
+    name: "疏密错落",
+    description: "疏密交替，错落有致，适合诗句短文",
+    recommended: { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 },
+    getPositions: (cols, rows) => {
+      const positions = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if ((r + c) % 3 === 0 || (r % 2 === 0 && c % 2 === 0)) {
+            positions.push({ row: r, col: c });
+          }
+        }
+      }
+      return positions;
+    }
+  }
+];
+
+function getTemplatePositions(templateId) {
+  const template = layoutTemplates.find((t) => t.id === templateId);
+  if (!template) return [];
+  const { cols, rows } = getGrid();
+  return template.getPositions(cols, rows);
 }
 
 const VALID_WEAR = ["新", "微磨", "旧痕"];
@@ -784,8 +962,24 @@ els.importClose.addEventListener("click", closeImportModal);
 els.importCancel.addEventListener("click", closeImportModal);
 els.importConfirm.addEventListener("click", confirmImport);
 
+els.templateLibraryBtn.addEventListener("click", openTemplateLibraryModal);
+els.tlLibraryClose.addEventListener("click", closeTemplateLibraryModal);
+els.tlLibraryCancel.addEventListener("click", closeTemplateLibraryModal);
+els.clearTemplateBtn.addEventListener("click", clearTemplate);
+
+els.templateList.addEventListener("click", (event) => {
+  const applyButton = event.target.closest("[data-apply-template]");
+  if (applyButton) {
+    applyTemplate(applyButton.dataset.applyTemplate);
+  }
+});
+
 els.textLayoutModal.addEventListener("click", (event) => {
   if (event.target === els.textLayoutModal) closeTextLayoutModal();
+});
+
+els.templateLibraryModal.addEventListener("click", (event) => {
+  if (event.target === els.templateLibraryModal) closeTemplateLibraryModal();
 });
 
 els.importModal.addEventListener("click", (event) => {
@@ -795,6 +989,7 @@ els.importModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.textLayoutModal.hidden) closeTextLayoutModal();
   if (event.key === "Escape" && !els.importModal.hidden) closeImportModal();
+  if (event.key === "Escape" && !els.templateLibraryModal.hidden) closeTemplateLibraryModal();
 });
 
 els.typeList.addEventListener("click", (event) => {
