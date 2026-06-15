@@ -204,7 +204,23 @@ const els = {
   slDefaultWear: document.querySelector("#slDefaultWear"),
   slAddAllMissing: document.querySelector("#slAddAllMissing"),
   slAddAllLow: document.querySelector("#slAddAllLow"),
-  slSummary: document.querySelector(".sl-summary")
+  slSummary: document.querySelector(".sl-summary"),
+  printPreviewModal: document.querySelector("#printPreviewModal"),
+  ppClose: document.querySelector("#ppClose"),
+  ppCancel: document.querySelector("#ppCancel"),
+  ppPageSelect: document.querySelector("#ppPageSelect"),
+  ppPageInfo: document.querySelector("#ppPageInfo"),
+  ppInkDepth: document.querySelector("#ppInkDepth"),
+  ppInkValue: document.querySelector("#ppInkValue"),
+  ppBorderToggle: document.querySelector("#ppBorderToggle"),
+  ppInnerGridToggle: document.querySelector("#ppInnerGridToggle"),
+  ppPreviewCanvas: document.querySelector("#ppPreviewCanvas"),
+  ppInfoPaper: document.querySelector("#ppInfoPaper"),
+  ppInfoFlow: document.querySelector("#ppInfoFlow"),
+  ppInfoGap: document.querySelector("#ppInfoGap"),
+  ppInfoCount: document.querySelector("#ppInfoCount"),
+  ppExportCurrent: document.querySelector("#ppExportCurrent"),
+  ppExportAll: document.querySelector("#ppExportAll")
 };
 
 function loadState() {
@@ -844,6 +860,15 @@ const exportSizeLimits = {
   maxPixels: 4000000
 };
 
+const printPreviewDefaults = {
+  paperColor: "#fffaf1",
+  inkDepth: 70,
+  showBorder: true,
+  showInnerGrid: false
+};
+
+let printPreviewState = { ...printPreviewDefaults, currentPageId: null };
+
 function getExportCanvasSize(page) {
   const { cols, rows } = getGrid(page.settings.paperSize);
   const cell = page.settings.paperSize === "bookmark" ? 44 : 56;
@@ -854,8 +879,143 @@ function getExportCanvasSize(page) {
   return { width, height };
 }
 
-function renderPageToCanvas(page, title, pageIndex, totalPages) {
-  const { cols } = getGrid(page.settings.paperSize);
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      }
+    : { r: 255, g: 250, b: 241 };
+}
+
+function rgbToHex(r, g, b) {
+  return (
+    "#" +
+    [r, g, b]
+      .map((x) => {
+        const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16);
+        return hex.length === 1 ? "0" + hex : hex;
+      })
+      .join("")
+  );
+}
+
+function adjustColorDepth(baseRgb, depthPercent) {
+  const t = depthPercent / 100;
+  const darken = 1 - t * 0.5;
+  return {
+    r: Math.round(baseRgb.r * darken),
+    g: Math.round(baseRgb.g * darken),
+    b: Math.round(baseRgb.b * darken)
+  };
+}
+
+function getWearEffects(wear) {
+  switch (wear) {
+    case "新":
+      return {
+        opacity: 1.0,
+        edgeRoughness: 0,
+        spotCount: 0,
+        cornerChamfer: 0,
+        innerNoise: 0
+      };
+    case "微磨":
+      return {
+        opacity: 0.92,
+        edgeRoughness: 2,
+        spotCount: 3,
+        cornerChamfer: 2,
+        innerNoise: 0.05
+      };
+    case "旧痕":
+      return {
+        opacity: 0.82,
+        edgeRoughness: 4,
+        spotCount: 7,
+        cornerChamfer: 4,
+        innerNoise: 0.12
+      };
+    default:
+      return {
+        opacity: 1.0,
+        edgeRoughness: 0,
+        spotCount: 0,
+        cornerChamfer: 0,
+        innerNoise: 0
+      };
+  }
+}
+
+function drawWornRect(ctx, x, y, w, h, effects, inkRgb) {
+  const { edgeRoughness, cornerChamfer } = effects;
+  ctx.save();
+  ctx.beginPath();
+
+  const c = Math.min(cornerChamfer, w / 4, h / 4);
+
+  const points = [
+    { x: x + c + (Math.random() - 0.5) * edgeRoughness, y: y + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + w - c + (Math.random() - 0.5) * edgeRoughness, y: y + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + w + (Math.random() - 0.5) * edgeRoughness, y: y + c + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + w + (Math.random() - 0.5) * edgeRoughness, y: y + h - c + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + w - c + (Math.random() - 0.5) * edgeRoughness, y: y + h + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + c + (Math.random() - 0.5) * edgeRoughness, y: y + h + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + (Math.random() - 0.5) * edgeRoughness, y: y + h - c + (Math.random() - 0.5) * edgeRoughness },
+    { x: x + (Math.random() - 0.5) * edgeRoughness, y: y + c + (Math.random() - 0.5) * edgeRoughness }
+  ];
+
+  ctx.moveTo(points[0].x, points[0].y);
+  ctx.lineTo(points[1].x, points[1].y);
+  ctx.quadraticCurveTo(x + w, y, points[2].x, points[2].y);
+  ctx.lineTo(points[3].x, points[3].y);
+  ctx.quadraticCurveTo(x + w, y + h, points[4].x, points[4].y);
+  ctx.lineTo(points[5].x, points[5].y);
+  ctx.quadraticCurveTo(x, y + h, points[6].x, points[6].y);
+  ctx.lineTo(points[7].x, points[7].y);
+  ctx.quadraticCurveTo(x, y, points[0].x, points[0].y);
+  ctx.closePath();
+
+  ctx.fillStyle = `rgb(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b})`;
+  ctx.fill();
+
+  if (effects.innerNoise > 0) {
+    ctx.globalCompositeOperation = "destination-out";
+    const noiseDensity = Math.floor(w * h * effects.innerNoise * 0.02);
+    for (let i = 0; i < noiseDensity; i++) {
+      const nx = x + Math.random() * w;
+      const ny = y + Math.random() * h;
+      const nr = Math.random() * 1.5 + 0.3;
+      ctx.beginPath();
+      ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.4 + 0.1})`;
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  if (effects.spotCount > 0) {
+    ctx.globalCompositeOperation = "destination-out";
+    for (let i = 0; i < effects.spotCount; i++) {
+      const sx = x + Math.random() * w;
+      const sy = y + Math.random() * h;
+      const sr = Math.random() * 2 + 0.8;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.5 + 0.3})`;
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  ctx.restore();
+}
+
+function renderPageToCanvas(page, title, pageIndex, totalPages, options = {}) {
+  const opts = { ...printPreviewDefaults, ...options };
+  const { cols, rows } = getGrid(page.settings.paperSize);
   const cell = page.settings.paperSize === "bookmark" ? 44 : 56;
   const gap = page.settings.gridGap;
   const margin = 48;
@@ -864,61 +1024,255 @@ function renderPageToCanvas(page, title, pageIndex, totalPages) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fffaf1";
+
+  const paperRgb = hexToRgb(opts.paperColor);
+  const baseInk = hexToRgb("#2f2921");
+  const inkRgb = adjustColorDepth(baseInk, opts.inkDepth);
+  const baseTextInk = hexToRgb("#fff5df");
+  const textInkRgb = adjustColorDepth(baseTextInk, 100 - (100 - opts.inkDepth) * 0.3);
+
+  ctx.fillStyle = `rgb(${paperRgb.r}, ${paperRgb.g}, ${paperRgb.b})`;
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#2f2921";
-  ctx.lineWidth = 4;
-  ctx.strokeRect(18, 18, width - 36, height - 36);
-  ctx.fillStyle = "#22201c";
+
+  for (let i = 0; i < Math.floor(width * height * 0.00008); i++) {
+    const nx = Math.random() * width;
+    const ny = Math.random() * height;
+    const nr = Math.random() * 1.2 + 0.2;
+    const variation = (Math.random() - 0.5) * 20;
+    ctx.beginPath();
+    ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${Math.max(0, paperRgb.r - 30 + variation)}, ${Math.max(0, paperRgb.g - 30 + variation)}, ${Math.max(0, paperRgb.b - 30 + variation)}, ${Math.random() * 0.15 + 0.05})`;
+    ctx.fill();
+  }
+
+  if (opts.showBorder) {
+    ctx.strokeStyle = `rgb(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b})`;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = "miter";
+    const borderInset = 18;
+    ctx.beginPath();
+    const jitter = () => (Math.random() - 0.5) * 1.5;
+    ctx.moveTo(borderInset + jitter(), borderInset + jitter());
+    ctx.lineTo(width - borderInset + jitter(), borderInset + jitter());
+    ctx.lineTo(width - borderInset + jitter(), height - borderInset + jitter());
+    ctx.lineTo(borderInset + jitter(), height - borderInset + jitter());
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b}, 0.35)`;
+    const innerInset = 26;
+    ctx.beginPath();
+    ctx.moveTo(innerInset, innerInset);
+    ctx.lineTo(width - innerInset, innerInset);
+    ctx.lineTo(width - innerInset, height - innerInset);
+    ctx.lineTo(innerInset, height - innerInset);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  const titleArea = { x: margin, y: 50, w: width - margin * 2, h: 30 };
+
+  ctx.fillStyle = `rgb(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b})`;
   ctx.font = "bold 28px sans-serif";
   const pageInfo = totalPages > 1 ? `（${pageIndex + 1}/${totalPages}）${page.name}` : "";
-  ctx.fillText(`${title || "未命名作品"}${pageInfo}`, margin, 50);
-  ctx.font = "bold 30px serif";
+  const fullTitle = `${title || "未命名作品"}${pageInfo}`;
+  ctx.globalAlpha = opts.inkDepth / 100;
+  ctx.fillText(fullTitle, titleArea.x, titleArea.y);
+  ctx.globalAlpha = 1;
+
+  const gridOriginX = margin;
+  const gridOriginY = margin + 45;
+  const gridWidth = cols * cell + (cols - 1) * gap;
+  const gridHeight = rows * cell + (rows - 1) * gap;
+
+  if (opts.showInnerGrid) {
+    ctx.save();
+    ctx.strokeStyle = `rgba(${inkRgb.r}, ${inkRgb.g}, ${inkRgb.b}, 0.12)`;
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= rows; r++) {
+      const ly = gridOriginY + r * (cell + gap) - gap / 2;
+      ctx.beginPath();
+      ctx.moveTo(gridOriginX - 4, ly);
+      ctx.lineTo(gridOriginX + gridWidth + 4, ly);
+      ctx.stroke();
+    }
+    for (let c = 0; c <= cols; c++) {
+      const lx = gridOriginX + c * (cell + gap) - gap / 2;
+      ctx.beginPath();
+      ctx.moveTo(lx, gridOriginY - 4);
+      ctx.lineTo(lx, gridOriginY + gridHeight + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   page.placements.forEach((placement) => {
     const type = state.inventory.find((item) => item.id === placement.typeId);
     if (!type) return;
-    const x = margin + placement.col * (cell + gap);
-    const y = margin + 45 + placement.row * (cell + gap);
-    ctx.fillStyle = "#2f2921";
-    ctx.fillRect(x, y, cell, cell);
-    ctx.fillStyle = "#fff5df";
+    const x = gridOriginX + placement.col * (cell + gap);
+    const y = gridOriginY + placement.row * (cell + gap);
+    const wear = getWearEffects(type.wear);
+
+    ctx.save();
+    ctx.globalAlpha = wear.opacity * (0.75 + (opts.inkDepth / 100) * 0.25);
+    drawWornRect(ctx, x, y, cell, cell, wear, inkRgb);
+    ctx.restore();
+
+    ctx.save();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = `900 ${Math.min(type.size + 8, 42)}px serif`;
-    ctx.fillText(type.char, x + cell / 2, y + cell / 2);
+    ctx.globalAlpha = wear.opacity * (0.8 + (opts.inkDepth / 100) * 0.2);
+
+    const centerX = x + cell / 2;
+    const centerY = y + cell / 2;
+    const charOffsetX = (Math.random() - 0.5) * (wear.edgeRoughness * 0.3);
+    const charOffsetY = (Math.random() - 0.5) * (wear.edgeRoughness * 0.3);
+    const charRotate = (Math.random() - 0.5) * (wear.edgeRoughness * 0.015);
+
+    ctx.translate(centerX + charOffsetX, centerY + charOffsetY);
+    if (page.settings.flowMode === "vertical") {
+      ctx.rotate(charRotate);
+    } else {
+      ctx.rotate(charRotate);
+    }
+
+    ctx.fillStyle = `rgb(${textInkRgb.r}, ${textInkRgb.g}, ${textInkRgb.b})`;
+    ctx.fillText(type.char, 0, 0);
+
+    if (wear.innerNoise > 0) {
+      ctx.globalCompositeOperation = "destination-out";
+      const noiseCount = Math.floor(wear.innerNoise * 15);
+      for (let i = 0; i < noiseCount; i++) {
+        const nx = (Math.random() - 0.5) * cell * 0.7;
+        const ny = (Math.random() - 0.5) * cell * 0.7;
+        const nr = Math.random() * 1.2 + 0.3;
+        ctx.beginPath();
+        ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.3 + 0.15})`;
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    ctx.restore();
   });
+
   return canvas;
 }
 
-let pendingExportMode = null;
+function getPaperSizeLabel(size) {
+  const map = {
+    postcard: "明信片",
+    bookmark: "书签",
+    square: "方形小笺"
+  };
+  return map[size] || size;
+}
 
-function doExport(mode) {
+function getFlowModeLabel(mode) {
+  return mode === "vertical" ? "竖排" : "横排";
+}
+
+function getInkDepthLabel(value) {
+  const v = Number(value);
+  if (v <= 30) return `较淡 (${v}%)`;
+  if (v <= 60) return `适中 (${v}%)`;
+  if (v <= 85) return `较浓 (${v}%)`;
+  return `浓墨 (${v}%)`;
+}
+
+function renderPrintPreview() {
+  const page = getPageById(printPreviewState.currentPageId) || getCurrentPage();
+  const pageIndex = getPageIndex(page.id);
   const totalPages = state.pages.length;
   const title = state.workTitle;
 
-  if (mode === "all" && totalPages === 1) {
-    mode = "current";
-  }
+  const canvas = renderPageToCanvas(page, title, pageIndex, totalPages, {
+    paperColor: printPreviewState.paperColor,
+    inkDepth: printPreviewState.inkDepth,
+    showBorder: printPreviewState.showBorder,
+    showInnerGrid: printPreviewState.showInnerGrid
+  });
 
-  if (mode === "current") {
-    const currentPage = getCurrentPage();
-    const currentIndex = getPageIndex(currentPage.id);
-    const canvas = renderPageToCanvas(currentPage, title, currentIndex, totalPages);
-    const link = document.createElement("a");
-    link.download = `${title || "movable-type"}_${currentPage.name}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-    return;
-  }
+  const previewCanvas = els.ppPreviewCanvas;
+  previewCanvas.width = canvas.width;
+  previewCanvas.height = canvas.height;
+  const ctx = previewCanvas.getContext("2d");
+  ctx.drawImage(canvas, 0, 0);
 
+  els.ppInfoPaper.textContent = getPaperSizeLabel(page.settings.paperSize);
+  els.ppInfoFlow.textContent = getFlowModeLabel(page.settings.flowMode);
+  els.ppInfoGap.textContent = `${page.settings.gridGap}px`;
+  els.ppInfoCount.textContent = `${page.placements.length}枚`;
+}
+
+function updatePrintPreviewPageSelect() {
+  const currentPageId = printPreviewState.currentPageId || state.currentPageId;
+  els.ppPageSelect.innerHTML = state.pages
+    .map((page, index) => {
+      const selected = page.id === currentPageId ? "selected" : "";
+      return `<option value="${page.id}" ${selected}>第${index + 1}页 · ${escapeHtml(page.name)}（${page.placements.length}枚）</option>`;
+    })
+    .join("");
+
+  const total = state.pages.length;
+  const currentIdx = getPageIndex(currentPageId) + 1;
+  els.ppPageInfo.textContent = `${currentIdx} / ${total}`;
+}
+
+function openPrintPreview() {
+  printPreviewState = {
+    ...printPreviewDefaults,
+    currentPageId: state.currentPageId
+  };
+
+  const paperRadio = document.querySelector('input[name="ppPaperColor"][value="#fffaf1"]');
+  if (paperRadio) paperRadio.checked = true;
+  els.ppInkDepth.value = printPreviewDefaults.inkDepth;
+  els.ppInkValue.textContent = getInkDepthLabel(printPreviewDefaults.inkDepth);
+  els.ppBorderToggle.checked = printPreviewDefaults.showBorder;
+  els.ppInnerGridToggle.checked = printPreviewDefaults.showInnerGrid;
+
+  updatePrintPreviewPageSelect();
+  renderPrintPreview();
+
+  const totalPages = state.pages.length;
+  els.ppExportAll.style.display = totalPages > 1 ? "" : "none";
+
+  els.printPreviewModal.hidden = false;
+}
+
+function closePrintPreview() {
+  els.printPreviewModal.hidden = true;
+}
+
+function downloadPrintPage(pageId) {
+  const page = getPageById(pageId) || getCurrentPage();
+  const pageIndex = getPageIndex(page.id);
+  const totalPages = state.pages.length;
+  const title = state.workTitle;
+
+  const canvas = renderPageToCanvas(page, title, pageIndex, totalPages, {
+    paperColor: printPreviewState.paperColor,
+    inkDepth: printPreviewState.inkDepth,
+    showBorder: printPreviewState.showBorder,
+    showInnerGrid: printPreviewState.showInnerGrid
+  });
+
+  const link = document.createElement("a");
+  link.download = `${title || "movable-type"}_${page.name}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+function downloadPrintAllPages() {
+  const totalPages = state.pages.length;
   state.pages.forEach((page, index) => {
     setTimeout(() => {
-      const canvas = renderPageToCanvas(page, title, index, totalPages);
-      const link = document.createElement("a");
-      link.download = `${title || "movable-type"}_${page.name}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    }, index * 300);
+      downloadPrintPage(page.id);
+    }, index * 350);
   });
 }
 
@@ -928,18 +1282,7 @@ function exportPreview() {
     openExportConfirm(issues);
     return;
   }
-
-  const totalPages = state.pages.length;
-  if (totalPages <= 1) {
-    doExport("current");
-    return;
-  }
-
-  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
-    doExport("current");
-  } else {
-    doExport("all");
-  }
+  openPrintPreview();
 }
 
 function escapeHtml(value) {
@@ -2184,6 +2527,61 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.templateLibraryModal.hidden) closeTemplateLibraryModal();
   if (event.key === "Escape" && !els.exportConfirmModal.hidden) closeExportConfirm();
   if (event.key === "Escape" && !els.shortageListModal.hidden) closeShortageListModal();
+  if (event.key === "Escape" && !els.printPreviewModal.hidden) closePrintPreview();
+});
+
+els.ppClose.addEventListener("click", closePrintPreview);
+els.ppCancel.addEventListener("click", closePrintPreview);
+
+els.ppPageSelect.addEventListener("change", () => {
+  printPreviewState.currentPageId = els.ppPageSelect.value;
+  updatePrintPreviewPageSelect();
+  renderPrintPreview();
+});
+
+document.querySelectorAll('input[name="ppPaperColor"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (radio.checked) {
+      printPreviewState.paperColor = radio.value;
+      renderPrintPreview();
+    }
+  });
+});
+
+els.ppInkDepth.addEventListener("input", () => {
+  printPreviewState.inkDepth = Number(els.ppInkDepth.value);
+  els.ppInkValue.textContent = getInkDepthLabel(printPreviewState.inkDepth);
+  renderPrintPreview();
+});
+
+els.ppBorderToggle.addEventListener("change", () => {
+  printPreviewState.showBorder = els.ppBorderToggle.checked;
+  renderPrintPreview();
+});
+
+els.ppInnerGridToggle.addEventListener("change", () => {
+  printPreviewState.showInnerGrid = els.ppInnerGridToggle.checked;
+  renderPrintPreview();
+});
+
+els.ppExportCurrent.addEventListener("click", () => {
+  const pageId = printPreviewState.currentPageId || state.currentPageId;
+  downloadPrintPage(pageId);
+});
+
+els.ppExportAll.addEventListener("click", () => {
+  const totalPages = state.pages.length;
+  if (totalPages <= 1) {
+    const pageId = printPreviewState.currentPageId || state.currentPageId;
+    downloadPrintPage(pageId);
+    return;
+  }
+  if (!confirm(`将使用当前预览设置（纸色、墨色、边框）导出全部 ${totalPages} 个页面，是否继续？`)) return;
+  downloadPrintAllPages();
+});
+
+els.printPreviewModal.addEventListener("click", (event) => {
+  if (event.target === els.printPreviewModal) closePrintPreview();
 });
 
 els.proofreadBtn.addEventListener("click", () => {
@@ -2229,16 +2627,7 @@ els.exportConfirmClose.addEventListener("click", closeExportConfirm);
 els.exportConfirmCancel.addEventListener("click", closeExportConfirm);
 els.exportConfirmOk.addEventListener("click", () => {
   closeExportConfirm();
-  const totalPages = state.pages.length;
-  if (totalPages <= 1) {
-    doExport("current");
-    return;
-  }
-  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
-    doExport("current");
-  } else {
-    doExport("all");
-  }
+  openPrintPreview();
 });
 
 els.exportConfirmModal.addEventListener("click", (event) => {

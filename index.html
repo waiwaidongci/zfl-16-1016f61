@@ -328,6 +328,112 @@
       </div>
     </div>
 
+    <div id="printPreviewModal" class="modal-overlay print-preview-overlay" hidden>
+      <div class="modal print-preview-modal">
+        <div class="modal-head print-preview-head">
+          <div>
+            <h2>印刷预览工作台</h2>
+            <p class="print-preview-subtitle">先预览成品效果，调整满意后再下载</p>
+          </div>
+          <button id="ppClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="print-preview-body">
+          <aside class="print-preview-controls">
+            <div class="pp-section">
+              <h3>页面选择</h3>
+              <div class="pp-page-selector">
+                <select id="ppPageSelect"></select>
+                <span id="ppPageInfo" class="pp-page-info"></span>
+              </div>
+            </div>
+
+            <div class="pp-section">
+              <h3>背景纸色</h3>
+              <div class="pp-color-swatches">
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#fffaf1" checked />
+                  <span class="pp-swatch-color" style="background:#fffaf1"></span>
+                  <span class="pp-swatch-label">米白旧笺</span>
+                </label>
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#f5e6c8" />
+                  <span class="pp-swatch-color" style="background:#f5e6c8"></span>
+                  <span class="pp-swatch-label">仿古牛皮</span>
+                </label>
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#efe4d0" />
+                  <span class="pp-swatch-color" style="background:#efe4d0"></span>
+                  <span class="pp-swatch-label">土黄毛边</span>
+                </label>
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#f0ebe0" />
+                  <span class="pp-swatch-color" style="background:#f0ebe0"></span>
+                  <span class="pp-swatch-label">素白宣纸</span>
+                </label>
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#d9ceb5" />
+                  <span class="pp-swatch-color" style="background:#d9ceb5"></span>
+                  <span class="pp-swatch-label">茶褐古纸</span>
+                </label>
+                <label class="pp-swatch">
+                  <input type="radio" name="ppPaperColor" value="#f7ecd4" />
+                  <span class="pp-swatch-color" style="background:#f7ecd4"></span>
+                  <span class="pp-swatch-label">淡黄竹纸</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="pp-section">
+              <h3>印墨深浅</h3>
+              <div class="pp-slider-row">
+                <span class="pp-slider-label">淡</span>
+                <input id="ppInkDepth" type="range" min="0" max="100" value="70" />
+                <span class="pp-slider-label">浓</span>
+              </div>
+              <div class="pp-slider-value" id="ppInkValue">适中 (70%)</div>
+            </div>
+
+            <div class="pp-section">
+              <h3>边框装饰</h3>
+              <label class="pp-toggle">
+                <input id="ppBorderToggle" type="checkbox" checked />
+                <span class="pp-toggle-slider"></span>
+                <span class="pp-toggle-label">显示外边框</span>
+              </label>
+              <label class="pp-toggle">
+                <input id="ppInnerGridToggle" type="checkbox" />
+                <span class="pp-toggle-slider"></span>
+                <span class="pp-toggle-label">显示落字网格线</span>
+              </label>
+            </div>
+
+            <div class="pp-section pp-info-section">
+              <h3>版面信息</h3>
+              <div class="pp-info-grid">
+                <div><span>纸张尺寸</span><strong id="ppInfoPaper">-</strong></div>
+                <div><span>排版方向</span><strong id="ppInfoFlow">-</strong></div>
+                <div><span>网格间距</span><strong id="ppInfoGap">-</strong></div>
+                <div><span>落字数量</span><strong id="ppInfoCount">-</strong></div>
+              </div>
+            </div>
+          </aside>
+
+          <section class="print-preview-canvas-area">
+            <div class="print-preview-canvas-wrap" id="ppCanvasWrap">
+              <canvas id="ppPreviewCanvas"></canvas>
+            </div>
+          </section>
+        </div>
+        <div class="modal-foot print-preview-foot">
+          <button id="ppCancel" type="button">返回编辑</button>
+          <div class="pp-foot-right">
+            <button id="ppExportCurrent" type="button">下载当前页</button>
+            <button id="ppExportAll" class="primary" type="button">下载全部页面</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>
