@@ -96,11 +96,16 @@ function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
-function getGrid() {
-  const size = state.settings.paperSize;
-  if (size === "bookmark") return { cols: 7, rows: 18 };
-  if (size === "square") return { cols: 12, rows: 12 };
+function getGrid(paperSize = state.settings.paperSize) {
+  if (paperSize === "bookmark") return { cols: 7, rows: 18 };
+  if (paperSize === "square") return { cols: 12, rows: 12 };
   return { cols: 16, rows: 10 };
+}
+
+function isTemplateCell(row, col) {
+  if (!state.activeTemplateId) return true;
+  const positions = getTemplatePositions(state.activeTemplateId);
+  return positions.some((p) => p.row === row && p.col === col);
 }
 
 function placementKey(row, col) {
@@ -166,7 +171,7 @@ function renderInventory() {
 function renderStage() {
   const { cols, rows } = getGrid();
   const map = new Map(state.placements.map((item) => [placementKey(item.row, item.col), item]));
-  const templatePositions = state.activeTemplateId ? new Set(getTemplatePositions(state.activeTemplateId).map((p) => placementKey(p.row, p.col))) : new Set();
+  const templatePositions = state.activeTemplateId ? new Set(getTemplatePositions(state.activeTemplateId).map((p) => placementKey(p.row, p.col))) : null;
   els.stage.className = `stage ${state.settings.paperSize}`;
   els.stage.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   els.stage.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
@@ -178,9 +183,11 @@ function renderStage() {
       const placement = map.get(key);
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
       const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
-      const templateCell = templatePositions.has(key) ? "template-cell" : "";
+      const inTemplate = !templatePositions || templatePositions.has(key);
+      const templateCellClass = inTemplate ? "template-cell" : "non-template-cell";
+      const disabledAttr = !inTemplate && !type ? 'disabled aria-disabled="true"' : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCell}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列" ${disabledAttr}>
           ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
@@ -210,9 +217,9 @@ function closeTemplateLibraryModal() {
 }
 
 function renderTemplateList() {
-  const { cols, rows } = getGrid();
   els.templateList.innerHTML = layoutTemplates
     .map((template) => {
+      const { cols, rows } = getGrid(template.recommended.paperSize);
       const positions = template.getPositions(cols, rows);
       const isActive = state.activeTemplateId === template.id;
       return `
@@ -241,8 +248,12 @@ function renderTemplateList() {
 
 function renderTemplatePreview(template, cols, rows) {
   const positions = new Set(template.getPositions(cols, rows).map((p) => placementKey(p.row, p.col)));
+  const maxDim = Math.max(cols, rows);
   const cellSize = Math.min(180 / cols, 180 / rows);
-  let html = `<div class="template-preview-grid" style="grid-template-columns: repeat(${cols}, ${cellSize}px); grid-template-rows: repeat(${rows}, ${cellSize}px);">`;
+  const previewWidth = cols * cellSize + (cols - 1) * 1;
+  const previewHeight = rows * cellSize + (rows - 1) * 1;
+  let html = `<div class="template-preview-wrap" style="aspect-ratio: ${cols}/${rows};">`;
+  html += `<div class="template-preview-grid" style="grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, 1fr); gap: 1px; width: 100%; height: 100%;">`;
   for (let r = 0; r < rows; r += 1) {
     for (let c = 0; c < cols; c += 1) {
       const key = placementKey(r, c);
@@ -250,7 +261,7 @@ function renderTemplatePreview(template, cols, rows) {
       html += `<div class="preview-cell ${active}"></div>`;
     }
   }
-  html += `</div>`;
+  html += `</div></div>`;
   return html;
 }
 
@@ -485,7 +496,7 @@ function confirmTextLayout() {
   if (direction === "horizontal") {
     for (let row = 0; row < rows; row += 1) {
       for (let col = 0; col < cols; col += 1) {
-        if (!occupied.has(placementKey(row, col))) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col)) {
           emptyCells.push({ row, col });
         }
       }
@@ -493,7 +504,7 @@ function confirmTextLayout() {
   } else {
     for (let col = 0; col < cols; col += 1) {
       for (let row = 0; row < rows; row += 1) {
-        if (!occupied.has(placementKey(row, col))) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col)) {
           emptyCells.push({ row, col });
         }
       }
@@ -534,6 +545,7 @@ function placeType(row, col, typeId = state.selectedTypeId) {
       state.placements[existingIndex].typeId = typeId;
     }
   } else {
+    if (!isTemplateCell(row, col)) return;
     state.placements.push({ row, col, typeId });
   }
   renderAll();
