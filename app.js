@@ -47,7 +47,16 @@ const els = {
   inventoryCount: document.querySelector("#inventoryCount"),
   saveDraftBtn: document.querySelector("#saveDraftBtn"),
   exportBtn: document.querySelector("#exportBtn"),
-  clearBoardBtn: document.querySelector("#clearBoardBtn")
+  clearBoardBtn: document.querySelector("#clearBoardBtn"),
+  textLayoutBtn: document.querySelector("#textLayoutBtn"),
+  textLayoutModal: document.querySelector("#textLayoutModal"),
+  tlClose: document.querySelector("#tlClose"),
+  tlText: document.querySelector("#tlText"),
+  tlAnalyze: document.querySelector("#tlAnalyze"),
+  tlAnalysis: document.querySelector("#tlAnalysis"),
+  tlAnalysisContent: document.querySelector("#tlAnalysisContent"),
+  tlCancel: document.querySelector("#tlCancel"),
+  tlConfirm: document.querySelector("#tlConfirm")
 };
 
 function loadState() {
@@ -204,6 +213,156 @@ function renderDrafts() {
       .join("") || `<p class="empty">还没有保存草稿。</p>`;
 }
 
+let tlPlan = null;
+
+function openTextLayoutModal() {
+  els.textLayoutModal.hidden = false;
+  els.tlText.value = "";
+  els.tlAnalysis.hidden = true;
+  els.tlAnalysisContent.innerHTML = "";
+  els.tlConfirm.disabled = true;
+  tlPlan = null;
+  document.querySelector('input[name="tlDir"][value="horizontal"]').checked = true;
+  els.tlText.focus();
+}
+
+function closeTextLayoutModal() {
+  els.textLayoutModal.hidden = true;
+  tlPlan = null;
+}
+
+function analyzeText() {
+  const text = els.tlText.value.replace(/\s/g, "");
+  if (!text) return;
+
+  const charCount = {};
+  for (const ch of text) {
+    charCount[ch] = (charCount[ch] || 0) + 1;
+  }
+
+  const usage = getUsage();
+  const results = [];
+
+  for (const [ch, needed] of Object.entries(charCount)) {
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) {
+      results.push({ char: ch, needed, status: "missing", matchedType: null, available: 0, style: "" });
+      continue;
+    }
+    const sorted = [...matchingTypes].sort((a, b) => {
+      const availA = a.quantity - (usage[a.id] || 0);
+      const availB = b.quantity - (usage[b.id] || 0);
+      return availB - availA;
+    });
+    const best = sorted[0];
+    const available = best.quantity - (usage[best.id] || 0);
+    const status = available >= needed ? "ok" : "low";
+    results.push({ char: ch, needed, status, matchedType: best, available, style: best.style });
+  }
+
+  const okCount = results.filter((r) => r.status === "ok").length;
+  const lowCount = results.filter((r) => r.status === "low").length;
+  const missingCount = results.filter((r) => r.status === "missing").length;
+
+  const direction = document.querySelector('input[name="tlDir"]:checked').value;
+
+  tlPlan = { text, direction, results };
+
+  let html = `<div class="tl-summary">`;
+  if (okCount) html += `<span class="tl-summary-item"><span class="dot green"></span>充足 ${okCount}字</span>`;
+  if (lowCount) html += `<span class="tl-summary-item"><span class="dot gold"></span>不足 ${lowCount}字</span>`;
+  if (missingCount) html += `<span class="tl-summary-item"><span class="dot red"></span>缺失 ${missingCount}字</span>`;
+  html += `</div>`;
+
+  for (const r of results) {
+    const statusClass = r.status === "ok" ? "status-ok" : r.status === "low" ? "status-low" : "status-missing";
+    const tagClass = r.status === "ok" ? "ok" : r.status === "low" ? "low" : "missing";
+    const tagText = r.status === "ok" ? "充足" : r.status === "low" ? "不足" : "缺失";
+    const info = r.status === "missing"
+      ? `<span>字模库中无此字</span>`
+      : `<span>${escapeHtml(r.style)} · 可用${r.available}/${r.needed}</span>`;
+
+    html += `
+      <div class="tl-char-row ${statusClass}">
+        <div class="tl-char-glyph">${escapeHtml(r.char)}</div>
+        <div class="tl-char-info">
+          <strong>${escapeHtml(r.char)}（需${r.needed}枚）</strong>
+          ${info}
+        </div>
+        <span class="tl-status-tag ${tagClass}">${tagText}</span>
+      </div>
+    `;
+  }
+
+  els.tlAnalysisContent.innerHTML = html;
+  els.tlAnalysis.hidden = false;
+  els.tlConfirm.disabled = false;
+}
+
+function confirmTextLayout() {
+  if (!tlPlan) return;
+
+  const { text, direction } = tlPlan;
+  const { cols, rows } = getGrid();
+  const usage = getUsage();
+  const occupied = new Set(state.placements.map((p) => placementKey(p.row, p.col)));
+
+  const charAssign = [];
+  const usedTypeIds = {};
+
+  for (const ch of text) {
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) {
+      charAssign.push(null);
+      continue;
+    }
+    const sorted = [...matchingTypes].sort((a, b) => {
+      const availA = a.quantity - (usage[a.id] || 0) - (usedTypeIds[a.id] || 0);
+      const availB = b.quantity - (usage[b.id] || 0) - (usedTypeIds[b.id] || 0);
+      return availB - availA;
+    });
+    const best = sorted[0];
+    const currentUsed = (usage[best.id] || 0) + (usedTypeIds[best.id] || 0);
+    if (currentUsed >= best.quantity) {
+      charAssign.push(null);
+      continue;
+    }
+    usedTypeIds[best.id] = (usedTypeIds[best.id] || 0) + 1;
+    charAssign.push(best.id);
+  }
+
+  const emptyCells = [];
+  if (direction === "horizontal") {
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        if (!occupied.has(placementKey(row, col))) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  } else {
+    for (let col = 0; col < cols; col += 1) {
+      for (let row = 0; row < rows; row += 1) {
+        if (!occupied.has(placementKey(row, col))) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  }
+
+  let cellIdx = 0;
+  for (let i = 0; i < charAssign.length; i += 1) {
+    if (charAssign[i] === null) continue;
+    if (cellIdx >= emptyCells.length) break;
+    const cell = emptyCells[cellIdx];
+    state.placements.push({ row: cell.row, col: cell.col, typeId: charAssign[i] });
+    cellIdx += 1;
+  }
+
+  closeTextLayoutModal();
+  renderAll();
+}
+
 function renderAll() {
   saveState();
   renderSettings();
@@ -339,6 +498,20 @@ els.exportBtn.addEventListener("click", exportPreview);
 els.clearBoardBtn.addEventListener("click", () => {
   state.placements = [];
   renderAll();
+});
+
+els.textLayoutBtn.addEventListener("click", openTextLayoutModal);
+els.tlClose.addEventListener("click", closeTextLayoutModal);
+els.tlCancel.addEventListener("click", closeTextLayoutModal);
+els.tlAnalyze.addEventListener("click", analyzeText);
+els.tlConfirm.addEventListener("click", confirmTextLayout);
+
+els.textLayoutModal.addEventListener("click", (event) => {
+  if (event.target === els.textLayoutModal) closeTextLayoutModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !els.textLayoutModal.hidden) closeTextLayoutModal();
 });
 
 els.typeList.addEventListener("click", (event) => {

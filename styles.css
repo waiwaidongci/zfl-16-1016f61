@@ -56,6 +56,16 @@ button.primary {
   border-color: var(--ink);
 }
 
+button.gold {
+  background: var(--gold);
+  color: #fffaf1;
+  border-color: var(--gold);
+}
+
+button.gold:hover {
+  border-color: #9a6e1f;
+}
+
 input,
 select {
   min-width: 0;
@@ -429,4 +439,238 @@ h3 {
     min-height: 420px;
     padding: 10px;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(34, 32, 28, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 24px 64px rgba(34, 32, 28, 0.22);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-body {
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.modal-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.modal-foot button {
+  min-width: 100px;
+}
+
+.tl-input-label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tl-input-label textarea {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: var(--ink);
+  padding: 10px;
+  outline: none;
+  font: inherit;
+  resize: vertical;
+}
+
+.tl-input-label textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(54, 95, 125, 0.15);
+}
+
+.tl-direction {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.tl-direction > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tl-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tl-analysis {
+  display: grid;
+  gap: 10px;
+}
+
+.tl-analysis[hidden] {
+  display: none;
+}
+
+.tl-analysis h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tl-analysis-content {
+  display: grid;
+  gap: 8px;
+}
+
+.tl-char-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 8px 12px;
+}
+
+.tl-char-row.status-ok {
+  border-color: var(--green);
+  background: rgba(60, 112, 86, 0.06);
+}
+
+.tl-char-row.status-low {
+  border-color: var(--gold);
+  background: rgba(183, 134, 44, 0.08);
+}
+
+.tl-char-row.status-missing {
+  border-color: var(--red);
+  background: rgba(164, 64, 55, 0.08);
+}
+
+.tl-char-glyph {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  aspect-ratio: 1;
+  border: 1px solid #2f2921;
+  background: #2f2921;
+  color: #f8ead2;
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tl-char-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.tl-char-info strong {
+  font-size: 14px;
+}
+
+.tl-char-info span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tl-status-tag {
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.tl-status-tag.ok {
+  background: var(--green);
+}
+
+.tl-status-tag.low {
+  background: var(--gold);
+}
+
+.tl-status-tag.missing {
+  background: var(--red);
+}
+
+.tl-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  font-size: 13px;
+}
+
+.tl-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tl-summary-item .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tl-summary-item .dot.green {
+  background: var(--green);
+}
+
+.tl-summary-item .dot.gold {
+  background: var(--gold);
+}
+
+.tl-summary-item .dot.red {
+  background: var(--red);
 }
