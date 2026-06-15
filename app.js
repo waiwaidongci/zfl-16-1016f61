@@ -1736,6 +1736,7 @@ function analyzeShortage(text) {
 }
 
 function openShortageListModal() {
+  const pageSettings = getPageSettings();
   els.shortageListModal.hidden = false;
   els.slText.value = "";
   els.slResults.hidden = true;
@@ -1743,7 +1744,12 @@ function openShortageListModal() {
   els.slDefaultSize.value = "24";
   els.slDefaultQuantity.value = "3";
   els.slDefaultWear.value = "微磨";
-  document.querySelector('input[name="slDir"][value="horizontal"]').checked = true;
+  const dirRadio = document.querySelector(`input[name="slDir"][value="${pageSettings.flowMode}"]`);
+  if (dirRadio) {
+    dirRadio.checked = true;
+  } else {
+    document.querySelector('input[name="slDir"][value="horizontal"]').checked = true;
+  }
   slAnalysisResult = null;
   slAddedItems.clear();
   els.slText.focus();
@@ -1812,11 +1818,12 @@ function renderShortageList(type, items) {
       let buttonHtml = "";
 
       if (isMissing) {
-        const quantity = item.needed;
+        const defaultQty = Number(els.slDefaultQuantity.value) || 3;
+        const quantity = Math.max(item.needed, defaultQty);
         quantityHtml = `
           <div class="sl-item-quantity">
             <span>数量</span>
-            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity="${item.char}" />
+            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity-missing="${item.char}" />
           </div>
         `;
         buttonHtml = `
@@ -1825,11 +1832,12 @@ function renderShortageList(type, items) {
           </button>
         `;
       } else if (isLow) {
-        const quantity = item.shortage;
+        const defaultQty = Number(els.slDefaultQuantity.value) || 3;
+        const quantity = Math.max(item.shortage, defaultQty);
         quantityHtml = `
           <div class="sl-item-quantity">
             <span>补充</span>
-            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity="${item.char}" />
+            <input type="number" min="1" max="99" value="${quantity}" data-sl-quantity-low="${item.char}" />
           </div>
         `;
         buttonHtml = `
@@ -1851,6 +1859,27 @@ function renderShortageList(type, items) {
     .join("");
 }
 
+function batchUpdateQuantity() {
+  if (!slAnalysisResult) return;
+  const newQuantity = Number(els.slDefaultQuantity.value) || 3;
+  const missingItems = slAnalysisResult.filter((r) => r.status === "missing");
+  const lowItems = slAnalysisResult.filter((r) => r.status === "low");
+
+  missingItems.forEach((item) => {
+    const inputEl = document.querySelector(`[data-sl-quantity-missing="${item.char}"]`);
+    if (inputEl && !slAddedItems.has(`missing-${item.char}`)) {
+      inputEl.value = Math.max(item.needed, newQuantity);
+    }
+  });
+
+  lowItems.forEach((item) => {
+    const inputEl = document.querySelector(`[data-sl-quantity-low="${item.char}"]`);
+    if (inputEl && !slAddedItems.has(`low-${item.char}`)) {
+      inputEl.value = Math.max(item.shortage, newQuantity);
+    }
+  });
+}
+
 function addMissingToInventory(char) {
   const style = els.slDefaultStyle.value.trim();
   if (!style) {
@@ -1861,7 +1890,7 @@ function addMissingToInventory(char) {
 
   const size = Number(els.slDefaultSize.value) || 24;
   const wear = els.slDefaultWear.value;
-  const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+  const quantityInput = document.querySelector(`[data-sl-quantity-missing="${char}"]`);
   const quantity = quantityInput ? Number(quantityInput.value) : 3;
 
   const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
@@ -1899,7 +1928,7 @@ function addLowToInventory(char) {
 
   const size = Number(els.slDefaultSize.value) || 24;
   const wear = els.slDefaultWear.value;
-  const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+  const quantityInput = document.querySelector(`[data-sl-quantity-low="${char}"]`);
   const quantity = quantityInput ? Number(quantityInput.value) : 1;
 
   const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
@@ -1947,7 +1976,7 @@ function addAllMissing() {
     const char = item.char;
     if (slAddedItems.has(`missing-${char}`)) continue;
 
-    const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+    const quantityInput = document.querySelector(`[data-sl-quantity-missing="${char}"]`);
     const quantity = quantityInput ? Number(quantityInput.value) : item.needed;
 
     const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
@@ -1995,7 +2024,7 @@ function addAllLow() {
     const char = item.char;
     if (slAddedItems.has(`low-${char}`)) continue;
 
-    const quantityInput = document.querySelector(`[data-sl-quantity="${char}"]`);
+    const quantityInput = document.querySelector(`[data-sl-quantity-low="${char}"]`);
     const quantity = quantityInput ? Number(quantityInput.value) : item.shortage;
 
     const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
@@ -2238,6 +2267,8 @@ els.shortageListModal.addEventListener("click", (event) => {
     return;
   }
 });
+
+els.slDefaultQuantity.addEventListener("input", batchUpdateQuantity);
 
 els.typeList.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-delete-type]");
