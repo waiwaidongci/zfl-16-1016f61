@@ -865,12 +865,10 @@ h3 {
 .cell.non-template-cell:not(.used) {
   background: rgba(111, 103, 92, 0.06);
   border-color: rgba(111, 103, 92, 0.18);
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .cell.non-template-cell:not(.used):hover {
-  background: rgba(111, 103, 92, 0.06);
+  background: rgba(111, 103, 92, 0.1);
 }
 
 .template-label {

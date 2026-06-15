@@ -183,11 +183,10 @@ function renderStage() {
       const placement = map.get(key);
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
       const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
-      const inTemplate = !templatePositions || templatePositions.has(key);
-      const templateCellClass = inTemplate ? "template-cell" : "non-template-cell";
-      const disabledAttr = !inTemplate && !type ? 'disabled aria-disabled="true"' : "";
+      const inTemplate = templatePositions?.has(key);
+      const templateCellClass = templatePositions ? (inTemplate ? "template-cell" : "non-template-cell") : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列" ${disabledAttr}>
+        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
           ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
@@ -248,10 +247,6 @@ function renderTemplateList() {
 
 function renderTemplatePreview(template, cols, rows) {
   const positions = new Set(template.getPositions(cols, rows).map((p) => placementKey(p.row, p.col)));
-  const maxDim = Math.max(cols, rows);
-  const cellSize = Math.min(180 / cols, 180 / rows);
-  const previewWidth = cols * cellSize + (cols - 1) * 1;
-  const previewHeight = rows * cellSize + (rows - 1) * 1;
   let html = `<div class="template-preview-wrap" style="aspect-ratio: ${cols}/${rows};">`;
   html += `<div class="template-preview-grid" style="grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, 1fr); gap: 1px; width: 100%; height: 100%;">`;
   for (let r = 0; r < rows; r += 1) {
@@ -545,7 +540,6 @@ function placeType(row, col, typeId = state.selectedTypeId) {
       state.placements[existingIndex].typeId = typeId;
     }
   } else {
-    if (!isTemplateCell(row, col)) return;
     state.placements.push({ row, col, typeId });
   }
   renderAll();
