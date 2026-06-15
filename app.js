@@ -121,7 +121,17 @@ const els = {
   deletePageBtn: document.querySelector("#deletePageBtn"),
   currentPageCount: document.querySelector("#currentPageCount"),
   totalCount: document.querySelector("#totalCount"),
-  usageTabs: document.querySelector(".usage-tabs")
+  usageTabs: document.querySelector(".usage-tabs"),
+  proofreadBtn: document.querySelector("#proofreadBtn"),
+  proofreadRefreshBtn: document.querySelector("#proofreadRefreshBtn"),
+  proofreadSummary: document.querySelector("#proofreadSummary"),
+  proofreadIssues: document.querySelector("#proofreadIssues"),
+  exportConfirmModal: document.querySelector("#exportConfirmModal"),
+  exportConfirmClose: document.querySelector("#exportConfirmClose"),
+  exportConfirmCancel: document.querySelector("#exportConfirmCancel"),
+  exportConfirmOk: document.querySelector("#exportConfirmOk"),
+  exportConfirmContent: document.querySelector("#exportConfirmContent"),
+  panelTabs: document.querySelector(".panel-tabs")
 };
 
 function loadState() {
@@ -636,6 +646,10 @@ function renderAll() {
   renderUsage();
   renderDrafts();
   renderActiveTemplateLabel();
+  const proofreadTab = document.querySelector('.panel-tab[data-right-tab="proofread"]');
+  if (proofreadTab && proofreadTab.classList.contains("active")) {
+    renderProofread();
+  }
 }
 
 function placeType(row, col, typeId = state.selectedTypeId) {
@@ -776,20 +790,17 @@ function renderPageToCanvas(page, title, pageIndex, totalPages) {
   return canvas;
 }
 
-function exportPreview() {
+let pendingExportMode = null;
+
+function doExport(mode) {
   const totalPages = state.pages.length;
   const title = state.workTitle;
 
-  if (totalPages === 1) {
-    const canvas = renderPageToCanvas(state.pages[0], title, 0, 1);
-    const link = document.createElement("a");
-    link.download = `${title || "movable-type"}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-    return;
+  if (mode === "all" && totalPages === 1) {
+    mode = "current";
   }
 
-  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
+  if (mode === "current") {
     const currentPage = getCurrentPage();
     const currentIndex = getPageIndex(currentPage.id);
     const canvas = renderPageToCanvas(currentPage, title, currentIndex, totalPages);
@@ -809,6 +820,26 @@ function exportPreview() {
       link.click();
     }, index * 300);
   });
+}
+
+function exportPreview() {
+  const issues = runProofread();
+  if (hasSevereIssues(issues)) {
+    openExportConfirm(issues);
+    return;
+  }
+
+  const totalPages = state.pages.length;
+  if (totalPages <= 1) {
+    doExport("current");
+    return;
+  }
+
+  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
+    doExport("current");
+  } else {
+    doExport("all");
+  }
 }
 
 function escapeHtml(value) {
@@ -896,6 +927,394 @@ function getTemplatePositions(templateId, paperSize) {
   if (!template) return [];
   const { cols, rows } = getGrid(paperSize);
   return template.getPositions(cols, rows);
+}
+
+let proofreadHighlightTimer = null;
+
+function clearProofreadHighlights() {
+  document.querySelectorAll(".cell.proofread-highlight, .cell.proofread-highlight-warning").forEach((cell) => {
+    cell.classList.remove("proofread-highlight", "proofread-highlight-warning");
+  });
+  if (proofreadHighlightTimer) {
+    clearTimeout(proofreadHighlightTimer);
+    proofreadHighlightTimer = null;
+  }
+}
+
+function highlightCells(cells, warning = false) {
+  clearProofreadHighlights();
+  const className = warning ? "proofread-highlight-warning" : "proofread-highlight";
+  cells.forEach(({ row, col, pageId }) => {
+    if (pageId && pageId !== state.currentPageId) {
+      switchPage(pageId);
+    }
+    requestAnimationFrame(() => {
+      const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+      if (cell) {
+        cell.classList.add(className);
+        cell.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      }
+    });
+  });
+  proofreadHighlightTimer = setTimeout(clearProofreadHighlights, 4000);
+}
+
+function checkInventoryShortage() {
+  const issues = [];
+  const totalUsage = getTotalUsage();
+  for (const typeId in totalUsage) {
+    const item = state.inventory.find((i) => i.id === typeId);
+    if (!item) continue;
+    if (totalUsage[typeId] > item.quantity) {
+      const locations = [];
+      state.pages.forEach((page) => {
+        page.placements
+          .filter((p) => p.typeId === typeId)
+          .forEach((p) => {
+            locations.push({ row: p.row, col: p.col, pageId: page.id });
+          });
+      });
+      issues.push({
+        id: `shortage-${typeId}`,
+        type: "error",
+        title: `字模「${item.char}·${item.style}」超量`,
+        desc: `当前共使用 ${totalUsage[typeId]} 枚，库存仅有 ${item.quantity} 枚，超出 ${totalUsage[typeId] - item.quantity} 枚。`,
+        locations,
+        locText: `涉及 ${locations.length} 格`
+      });
+    }
+  }
+  return issues;
+}
+
+function checkExcessiveBlanks() {
+  const issues = [];
+  state.pages.forEach((page) => {
+    const { cols, rows } = getGrid(page.settings.paperSize);
+    const totalCells = cols * rows;
+    const usedCells = page.placements.length;
+    if (totalCells === 0) return;
+    const blankRatio = (totalCells - usedCells) / totalCells;
+    if (usedCells > 0 && blankRatio > 0.85) {
+      issues.push({
+        id: `blank-${page.id}`,
+        type: "warning",
+        title: `页面「${page.name}」空白过多`,
+        desc: `版面共 ${totalCells} 格，仅落字 ${usedCells} 格，空白比例约 ${Math.round(blankRatio * 100)}%。`,
+        locations: [{ row: 0, col: 0, pageId: page.id }],
+        locText: `${page.name} · 建议增加内容`
+      });
+    }
+  });
+  return issues;
+}
+
+function checkConsecutiveDuplicates() {
+  const issues = [];
+  state.pages.forEach((page) => {
+    const { cols, rows } = getGrid(page.settings.paperSize);
+    const map = new Map(page.placements.map((p) => [placementKey(p.row, p.col), p]));
+
+    for (let row = 0; row < rows; row++) {
+      let prevChar = null;
+      let prevTypeId = null;
+      let startCol = -1;
+      let streak = 0;
+      for (let col = 0; col < cols; col++) {
+        const p = map.get(placementKey(row, col));
+        const type = p ? state.inventory.find((i) => i.id === p.typeId) : null;
+        const curChar = type ? type.char : null;
+        const curTypeId = p ? p.typeId : null;
+        if (curChar && curChar === prevChar && curTypeId === prevTypeId) {
+          streak++;
+        } else {
+          if (streak >= 3) {
+            const locations = [];
+            for (let c = startCol; c < col; c++) {
+              locations.push({ row, col: c, pageId: page.id });
+            }
+            issues.push({
+              id: `dup-h-${page.id}-${row}-${startCol}`,
+              type: "warning",
+              title: `「${prevChar}」横向连续重复`,
+              desc: `第 ${row + 1} 行第 ${startCol + 1} 列起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
+              locations,
+              locText: `${page.name} · 第${row + 1}行`
+            });
+          }
+          streak = curChar ? 1 : 0;
+          startCol = col;
+          prevChar = curChar;
+          prevTypeId = curTypeId;
+        }
+      }
+      if (streak >= 3) {
+        const locations = [];
+        for (let c = startCol; c < cols; c++) {
+          locations.push({ row, col: c, pageId: page.id });
+        }
+        issues.push({
+          id: `dup-h-${page.id}-${row}-${startCol}`,
+          type: "warning",
+          title: `「${prevChar}」横向连续重复`,
+          desc: `第 ${row + 1} 行第 ${startCol + 1} 列起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
+          locations,
+          locText: `${page.name} · 第${row + 1}行`
+        });
+      }
+    }
+
+    for (let col = 0; col < cols; col++) {
+      let prevChar = null;
+      let prevTypeId = null;
+      let startRow = -1;
+      let streak = 0;
+      for (let row = 0; row < rows; row++) {
+        const p = map.get(placementKey(row, col));
+        const type = p ? state.inventory.find((i) => i.id === p.typeId) : null;
+        const curChar = type ? type.char : null;
+        const curTypeId = p ? p.typeId : null;
+        if (curChar && curChar === prevChar && curTypeId === prevTypeId) {
+          streak++;
+        } else {
+          if (streak >= 3) {
+            const locations = [];
+            for (let r = startRow; r < row; r++) {
+              locations.push({ row: r, col, pageId: page.id });
+            }
+            issues.push({
+              id: `dup-v-${page.id}-${col}-${startRow}`,
+              type: "warning",
+              title: `「${prevChar}」纵向连续重复`,
+              desc: `第 ${col + 1} 列第 ${startRow + 1} 行起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
+              locations,
+              locText: `${page.name} · 第${col + 1}列`
+            });
+          }
+          streak = curChar ? 1 : 0;
+          startRow = row;
+          prevChar = curChar;
+          prevTypeId = curTypeId;
+        }
+      }
+      if (streak >= 3) {
+        const locations = [];
+        for (let r = startRow; r < rows; r++) {
+          locations.push({ row: r, col, pageId: page.id });
+        }
+        issues.push({
+          id: `dup-v-${page.id}-${col}-${startRow}`,
+          type: "warning",
+          title: `「${prevChar}」纵向连续重复`,
+          desc: `第 ${col + 1} 列第 ${startRow + 1} 行起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
+          locations,
+          locText: `${page.name} · 第${col + 1}列`
+        });
+      }
+    }
+  });
+  return issues;
+}
+
+function checkEdgeDensity() {
+  const issues = [];
+  state.pages.forEach((page) => {
+    const { cols, rows } = getGrid(page.settings.paperSize);
+    const edgeCells = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (r === 0 || r === rows - 1 || c === 0 || c === cols - 1) {
+          edgeCells.push({ row: r, col: c });
+        }
+      }
+    }
+    const edgeUsed = page.placements.filter((p) =>
+      edgeCells.some((e) => e.row === p.row && e.col === p.col)
+    ).length;
+    const totalUsed = page.placements.length;
+    if (totalUsed > 0 && edgeUsed >= Math.max(3, Math.ceil(totalUsed * 0.6))) {
+      const locations = edgeCells
+        .filter((e) => page.placements.some((p) => p.row === e.row && p.col === e.col))
+        .map((e) => ({ row: e.row, col: e.col, pageId: page.id }));
+      issues.push({
+        id: `edge-${page.id}`,
+        type: "warning",
+        title: `页面「${page.name}」边缘落字过密`,
+        desc: `边缘格子共落字 ${edgeUsed} 个，占总落字 ${totalUsed} 个的 ${Math.round((edgeUsed / totalUsed) * 100)}%，视觉上可能显得拥挤。`,
+        locations,
+        locText: `${page.name} · 边缘区域`
+      });
+    }
+  });
+  return issues;
+}
+
+function checkEmptyTitle() {
+  const issues = [];
+  if (!state.workTitle || state.workTitle.trim() === "") {
+    issues.push({
+      id: "empty-title",
+      type: "error",
+      title: "作品名为空",
+      desc: "当前作品名未填写，导出图片将使用默认文件名。",
+      focusElement: "workTitle",
+      locText: "顶部设置栏 · 作品名"
+    });
+  }
+  return issues;
+}
+
+function checkExportSize() {
+  const issues = [];
+  state.pages.forEach((page) => {
+    const { cols, rows } = getGrid(page.settings.paperSize);
+    const usedCount = page.placements.length;
+    if (usedCount === 0) {
+      issues.push({
+        id: `empty-page-${page.id}`,
+        type: "error",
+        title: `页面「${page.name}」无内容`,
+        desc: `该页面未落任何字，导出后为空白页面。`,
+        locations: [{ row: 0, col: 0, pageId: page.id }],
+        locText: `${page.name} · 请添加内容`
+      });
+    }
+    if (page.settings.gridGap >= 16 && usedCount > 5) {
+      issues.push({
+        id: `large-gap-${page.id}`,
+        type: "warning",
+        title: `页面「${page.name}」网格间距过大`,
+        desc: `当前网格间距 ${page.settings.gridGap}px，落字较多时字距过大，可能影响整体观感。`,
+        focusElement: "gridGap",
+        locText: `${page.name} · 网格间距 ${page.settings.gridGap}px`
+      });
+    }
+  });
+  return issues;
+}
+
+function runProofread() {
+  return [
+    ...checkInventoryShortage(),
+    ...checkExcessiveBlanks(),
+    ...checkConsecutiveDuplicates(),
+    ...checkEdgeDensity(),
+    ...checkEmptyTitle(),
+    ...checkExportSize()
+  ];
+}
+
+function hasSevereIssues(issues) {
+  return issues.some((i) => i.type === "error");
+}
+
+function renderProofread() {
+  const issues = runProofread();
+  const errorCount = issues.filter((i) => i.type === "error").length;
+  const warningCount = issues.filter((i) => i.type === "warning").length;
+
+  const errorClass = errorCount > 0 ? "error" : "ok";
+  const warningClass = warningCount > 0 ? "warning" : "ok";
+
+  els.proofreadSummary.innerHTML = `
+    <div class="proofread-summary-item ${errorClass}">
+      <span class="label">严重问题</span>
+      <span class="value">${errorCount} 项</span>
+    </div>
+    <div class="proofread-summary-item ${warningClass}">
+      <span class="label">提示警告</span>
+      <span class="value">${warningCount} 项</span>
+    </div>
+  `;
+
+  if (issues.length === 0) {
+    els.proofreadIssues.innerHTML = `
+      <div class="proofread-empty">
+        <div class="proofread-empty-icon">✓</div>
+        <div class="proofread-empty-text">排版校对通过</div>
+        <div class="proofread-empty-hint">未发现异常问题，可以放心导出</div>
+      </div>
+    `;
+  } else {
+    els.proofreadIssues.innerHTML = issues
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === "error" ? -1 : 1;
+        return 0;
+      })
+      .map(
+        (issue) => `
+      <article class="proofread-issue ${issue.type}" data-proofread-id="${issue.id}">
+        <div class="proofread-issue-head">
+          <span class="proofread-issue-title">${escapeHtml(issue.title)}</span>
+          <span class="proofread-issue-tag ${issue.type}">${issue.type === "error" ? "严重" : "提示"}</span>
+        </div>
+        <div class="proofread-issue-desc">${escapeHtml(issue.desc)}</div>
+        <span class="proofread-issue-loc">📍 ${escapeHtml(issue.locText)}</span>
+      </article>
+    `
+      )
+      .join("");
+  }
+
+  return issues;
+}
+
+let exportProofreadResult = null;
+
+function openExportConfirm(issues) {
+  exportProofreadResult = issues;
+  const errorCount = issues.filter((i) => i.type === "error").length;
+  const warningCount = issues.filter((i) => i.type === "warning").length;
+
+  let issuesHtml = "";
+  if (issues.length > 0) {
+    issuesHtml = `
+      <div class="export-confirm-issues">
+        ${issues
+          .sort((a, b) => (a.type !== b.type ? (a.type === "error" ? -1 : 1) : 0))
+          .slice(0, 8)
+          .map(
+            (issue) => `
+          <div class="export-confirm-issue ${issue.type}">
+            <div>
+              <div class="export-confirm-issue-title">${escapeHtml(issue.title)}</div>
+              <div class="export-confirm-issue-desc">${escapeHtml(issue.desc)}</div>
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+        ${issues.length > 8 ? `<div class="export-confirm-issue-desc" style="padding:4px 10px;">还有 ${issues.length - 8} 项问题，请前往排版校对中心查看详情。</div>` : ""}
+      </div>
+    `;
+  }
+
+  els.exportConfirmContent.innerHTML = `
+    <div class="export-confirm-alert">
+      <strong>⚠ 发现 ${errorCount} 项严重问题，${warningCount} 项提示警告</strong>
+      <p>导出前建议先修复以上问题。若确认无误，可点击「继续导出」。</p>
+    </div>
+    ${issuesHtml}
+  `;
+
+  els.exportConfirmModal.hidden = false;
+}
+
+function closeExportConfirm() {
+  els.exportConfirmModal.hidden = true;
+  exportProofreadResult = null;
+}
+
+function switchRightTab(tabName) {
+  document.querySelectorAll(".panel-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.rightTab === tabName);
+  });
+  document.querySelectorAll("[data-right-tab-content]").forEach((content) => {
+    content.hidden = content.dataset.rightTabContent !== tabName;
+  });
+  if (tabName === "proofread") {
+    renderProofread();
+  }
 }
 
 const VALID_WEAR = ["新", "微磨", "旧痕"];
@@ -1215,6 +1634,66 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.textLayoutModal.hidden) closeTextLayoutModal();
   if (event.key === "Escape" && !els.importModal.hidden) closeImportModal();
   if (event.key === "Escape" && !els.templateLibraryModal.hidden) closeTemplateLibraryModal();
+  if (event.key === "Escape" && !els.exportConfirmModal.hidden) closeExportConfirm();
+});
+
+els.proofreadBtn.addEventListener("click", () => {
+  switchRightTab("proofread");
+});
+
+els.proofreadRefreshBtn.addEventListener("click", () => {
+  renderProofread();
+});
+
+els.panelTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-right-tab]");
+  if (tab) {
+    switchRightTab(tab.dataset.rightTab);
+  }
+});
+
+els.proofreadIssues.addEventListener("click", (event) => {
+  const issueEl = event.target.closest("[data-proofread-id]");
+  if (!issueEl) return;
+  const issueId = issueEl.dataset.proofreadId;
+  const issues = runProofread();
+  const issue = issues.find((i) => i.id === issueId);
+  if (!issue) return;
+  if (issue.focusElement) {
+    const target = document.getElementById(issue.focusElement);
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.style.transition = "box-shadow 0.3s";
+      target.style.boxShadow = "0 0 0 3px rgba(166, 64, 55, 0.3)";
+      setTimeout(() => {
+        target.style.boxShadow = "";
+      }, 2000);
+    }
+  }
+  if (issue.locations && issue.locations.length > 0) {
+    highlightCells(issue.locations, issue.type === "warning");
+  }
+});
+
+els.exportConfirmClose.addEventListener("click", closeExportConfirm);
+els.exportConfirmCancel.addEventListener("click", closeExportConfirm);
+els.exportConfirmOk.addEventListener("click", () => {
+  closeExportConfirm();
+  const totalPages = state.pages.length;
+  if (totalPages <= 1) {
+    doExport("current");
+    return;
+  }
+  if (!confirm(`当前作品集共 ${totalPages} 页，是否逐张导出所有页面？\n\n点击"确定"导出所有页面，点击"取消"仅导出当前页。`)) {
+    doExport("current");
+  } else {
+    doExport("all");
+  }
+});
+
+els.exportConfirmModal.addEventListener("click", (event) => {
+  if (event.target === els.exportConfirmModal) closeExportConfirm();
 });
 
 els.typeList.addEventListener("click", (event) => {

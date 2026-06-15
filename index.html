@@ -16,6 +16,7 @@
         <div class="top-actions">
           <button id="templateLibraryBtn" class="gold">版式模板库</button>
           <button id="textLayoutBtn">文本落版</button>
+          <button id="proofreadBtn">排版校对中心</button>
           <button id="saveDraftBtn" class="primary">保存草稿</button>
           <button id="exportBtn">导出预览图</button>
           <button id="clearBoardBtn">清空版面</button>
@@ -105,28 +106,46 @@
           <div id="stage" class="stage" aria-label="排版画布"></div>
         </section>
 
-        <aside class="panel draft-panel">
-          <div class="panel-head">
-            <h2>草稿与核对</h2>
+        <aside class="panel right-panel">
+          <div class="panel-tabs">
+            <button class="panel-tab active" data-right-tab="draft" type="button">草稿与核对</button>
+            <button class="panel-tab" data-right-tab="proofread" type="button">排版校对</button>
           </div>
-          <div class="usage-summary">
-            <div class="usage-summary-item">
-              <span class="usage-summary-label">当前页</span>
-              <span id="currentPageCount" class="usage-summary-value">0个落字</span>
+
+          <div class="right-tab-content" data-right-tab-content="draft">
+            <div class="panel-head">
+              <h2>草稿与核对</h2>
             </div>
-            <div class="usage-summary-item total">
-              <span class="usage-summary-label">全作品</span>
-              <span id="totalCount" class="usage-summary-value">0个落字</span>
+            <div class="usage-summary">
+              <div class="usage-summary-item">
+                <span class="usage-summary-label">当前页</span>
+                <span id="currentPageCount" class="usage-summary-value">0个落字</span>
+              </div>
+              <div class="usage-summary-item total">
+                <span class="usage-summary-label">全作品</span>
+                <span id="totalCount" class="usage-summary-value">0个落字</span>
+              </div>
             </div>
+            <div class="usage-tabs">
+              <button class="usage-tab active" data-usage-tab="current" type="button">当前页用量</button>
+              <button class="usage-tab" data-usage-tab="total" type="button">全作品用量</button>
+            </div>
+            <div id="usageList" class="usage-list"></div>
+            <div class="divider"></div>
+            <h3>已保存草稿</h3>
+            <div id="draftList" class="draft-list"></div>
           </div>
-          <div class="usage-tabs">
-            <button class="usage-tab active" data-usage-tab="current" type="button">当前页用量</button>
-            <button class="usage-tab" data-usage-tab="total" type="button">全作品用量</button>
+
+          <div class="right-tab-content" data-right-tab-content="proofread" hidden>
+            <div class="panel-head">
+              <h2>排版校对中心</h2>
+              <div class="panel-head-actions">
+                <button id="proofreadRefreshBtn" class="mini-btn" type="button">重新检查</button>
+              </div>
+            </div>
+            <div class="proofread-summary" id="proofreadSummary"></div>
+            <div class="proofread-issues" id="proofreadIssues"></div>
           </div>
-          <div id="usageList" class="usage-list"></div>
-          <div class="divider"></div>
-          <h3>已保存草稿</h3>
-          <div id="draftList" class="draft-list"></div>
         </aside>
       </section>
     </main>
@@ -206,6 +225,22 @@
         </div>
         <div class="modal-foot">
           <button id="tlLibraryCancel" type="button">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="exportConfirmModal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>导出前校对提示</h2>
+          <button id="exportConfirmClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="exportConfirmContent" class="export-confirm-content"></div>
+        </div>
+        <div class="modal-foot">
+          <button id="exportConfirmCancel" type="button">取消导出</button>
+          <button id="exportConfirmOk" class="primary" type="button">继续导出</button>
         </div>
       </div>
     </div>
