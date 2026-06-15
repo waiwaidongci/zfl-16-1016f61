@@ -753,13 +753,28 @@ function saveDraft() {
   renderAll();
 }
 
-function renderPageToCanvas(page, title, pageIndex, totalPages) {
+const exportSizeLimits = {
+  minSide: 320,
+  maxSide: 2400,
+  maxPixels: 4000000
+};
+
+function getExportCanvasSize(page) {
   const { cols, rows } = getGrid(page.settings.paperSize);
   const cell = page.settings.paperSize === "bookmark" ? 44 : 56;
-  const gap = page.settings.gridGap;
+  const gap = Number(page.settings.gridGap);
   const margin = 48;
   const width = cols * cell + (cols - 1) * gap + margin * 2;
   const height = rows * cell + (rows - 1) * gap + margin * 2 + 70;
+  return { width, height };
+}
+
+function renderPageToCanvas(page, title, pageIndex, totalPages) {
+  const { cols } = getGrid(page.settings.paperSize);
+  const cell = page.settings.paperSize === "bookmark" ? 44 : 56;
+  const gap = page.settings.gridGap;
+  const margin = 48;
+  const { width, height } = getExportCanvasSize(page);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -1167,8 +1182,13 @@ function checkEmptyTitle() {
 function checkExportSize() {
   const issues = [];
   state.pages.forEach((page) => {
-    const { cols, rows } = getGrid(page.settings.paperSize);
     const usedCount = page.placements.length;
+    const { width, height } = getExportCanvasSize(page);
+    const totalPixels = width * height;
+    const invalidSize = !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0;
+    const sideOutOfRange = width < exportSizeLimits.minSide || height < exportSizeLimits.minSide || width > exportSizeLimits.maxSide || height > exportSizeLimits.maxSide;
+    const pixelsOutOfRange = totalPixels > exportSizeLimits.maxPixels;
+
     if (usedCount === 0) {
       issues.push({
         id: `empty-page-${page.id}`,
@@ -1177,6 +1197,17 @@ function checkExportSize() {
         desc: `该页面未落任何字，导出后为空白页面。`,
         locations: [{ row: 0, col: 0, pageId: page.id }],
         locText: `${page.name} · 请添加内容`
+      });
+    }
+    if (invalidSize || sideOutOfRange || pixelsOutOfRange) {
+      const sizeText = invalidSize ? "无法计算" : `${Math.round(width)} × ${Math.round(height)}px`;
+      issues.push({
+        id: `export-size-${page.id}`,
+        type: "error",
+        title: `页面「${page.name}」导出尺寸异常`,
+        desc: `当前导出尺寸为 ${sizeText}，允许范围为单边 ${exportSizeLimits.minSide}-${exportSizeLimits.maxSide}px 且总像素不超过 ${Math.round(exportSizeLimits.maxPixels / 10000)} 万。`,
+        focusElement: invalidSize ? "paperSize" : "gridGap",
+        locText: invalidSize ? `${page.name} · 纸张设置` : `${page.name} · 导出尺寸 ${sizeText}`
       });
     }
     if (page.settings.gridGap >= 16 && usedCount > 5) {
