@@ -674,3 +674,38 @@ h3 {
 .tl-summary-item .dot.red {
   background: var(--red);
 }
+
+.tl-total {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tl-alloc-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tl-alloc-item {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tl-short {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(166, 64, 55, 0.1);
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 800;
+}

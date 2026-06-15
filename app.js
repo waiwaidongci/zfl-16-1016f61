@@ -215,6 +215,56 @@ function renderDrafts() {
 
 let tlPlan = null;
 
+function computeTextAllocation(text) {
+  const usage = getUsage();
+  const usedTypeIds = {};
+  const charCount = {};
+  for (const ch of text) {
+    charCount[ch] = (charCount[ch] || 0) + 1;
+  }
+
+  const perCharAllocation = {};
+
+  for (const ch of text) {
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) continue;
+
+    const sorted = [...matchingTypes].sort((a, b) => {
+      const availA = a.quantity - (usage[a.id] || 0) - (usedTypeIds[a.id] || 0);
+      const availB = b.quantity - (usage[b.id] || 0) - (usedTypeIds[b.id] || 0);
+      return availB - availA;
+    });
+    const best = sorted[0];
+    const currentUsed = (usage[best.id] || 0) + (usedTypeIds[best.id] || 0);
+    if (currentUsed >= best.quantity) continue;
+
+    usedTypeIds[best.id] = (usedTypeIds[best.id] || 0) + 1;
+    if (!perCharAllocation[ch]) perCharAllocation[ch] = [];
+    const existing = perCharAllocation[ch].find((a) => a.typeId === best.id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      perCharAllocation[ch].push({ typeId: best.id, char: best.char, style: best.style, count: 1, available: best.quantity - (usage[best.id] || 0) });
+    }
+  }
+
+  const results = [];
+  for (const [ch, needed] of Object.entries(charCount)) {
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) {
+      results.push({ char: ch, needed, status: "missing", allocations: [], totalAvailable: 0 });
+      continue;
+    }
+    const totalAvailable = matchingTypes.reduce((sum, t) => sum + (t.quantity - (usage[t.id] || 0)), 0);
+    const allocations = perCharAllocation[ch] || [];
+    const allocatedCount = allocations.reduce((sum, a) => sum + a.count, 0);
+    const status = allocatedCount >= needed ? "ok" : totalAvailable > 0 ? "low" : "missing";
+    results.push({ char: ch, needed, status, allocations, totalAvailable });
+  }
+
+  return { results, usedTypeIds };
+}
+
 function openTextLayoutModal() {
   els.textLayoutModal.hidden = false;
   els.tlText.value = "";
@@ -235,38 +285,14 @@ function analyzeText() {
   const text = els.tlText.value.replace(/\s/g, "");
   if (!text) return;
 
-  const charCount = {};
-  for (const ch of text) {
-    charCount[ch] = (charCount[ch] || 0) + 1;
-  }
+  const { results } = computeTextAllocation(text);
+  const direction = document.querySelector('input[name="tlDir"]:checked').value;
 
-  const usage = getUsage();
-  const results = [];
-
-  for (const [ch, needed] of Object.entries(charCount)) {
-    const matchingTypes = state.inventory.filter((item) => item.char === ch);
-    if (matchingTypes.length === 0) {
-      results.push({ char: ch, needed, status: "missing", matchedType: null, available: 0, style: "" });
-      continue;
-    }
-    const sorted = [...matchingTypes].sort((a, b) => {
-      const availA = a.quantity - (usage[a.id] || 0);
-      const availB = b.quantity - (usage[b.id] || 0);
-      return availB - availA;
-    });
-    const best = sorted[0];
-    const available = best.quantity - (usage[best.id] || 0);
-    const status = available >= needed ? "ok" : "low";
-    results.push({ char: ch, needed, status, matchedType: best, available, style: best.style });
-  }
+  tlPlan = { text, direction, results };
 
   const okCount = results.filter((r) => r.status === "ok").length;
   const lowCount = results.filter((r) => r.status === "low").length;
   const missingCount = results.filter((r) => r.status === "missing").length;
-
-  const direction = document.querySelector('input[name="tlDir"]:checked').value;
-
-  tlPlan = { text, direction, results };
 
   let html = `<div class="tl-summary">`;
   if (okCount) html += `<span class="tl-summary-item"><span class="dot green"></span>充足 ${okCount}字</span>`;
@@ -278,16 +304,32 @@ function analyzeText() {
     const statusClass = r.status === "ok" ? "status-ok" : r.status === "low" ? "status-low" : "status-missing";
     const tagClass = r.status === "ok" ? "ok" : r.status === "low" ? "low" : "missing";
     const tagText = r.status === "ok" ? "充足" : r.status === "low" ? "不足" : "缺失";
-    const info = r.status === "missing"
-      ? `<span>字模库中无此字</span>`
-      : `<span>${escapeHtml(r.style)} · 可用${r.available}/${r.needed}</span>`;
+
+    let allocHtml = "";
+    if (r.status === "missing") {
+      allocHtml = `<span>字模库中无此字</span>`;
+    } else {
+      const allocatedCount = r.allocations.reduce((sum, a) => sum + a.count, 0);
+      allocHtml = `<span class="tl-total">总可用 ${r.totalAvailable} / 需 ${r.needed}（将分配 ${allocatedCount}）</span>`;
+      if (r.allocations.length > 0) {
+        allocHtml += `<div class="tl-alloc-list">`;
+        for (const alloc of r.allocations) {
+          allocHtml += `<span class="tl-alloc-item">${escapeHtml(alloc.style)} · 分配${alloc.count}/${alloc.available}</span>`;
+        }
+        allocHtml += `</div>`;
+      }
+      if (allocatedCount < r.needed) {
+        const short = r.needed - allocatedCount;
+        allocHtml += `<span class="tl-short">仍缺 ${short} 枚</span>`;
+      }
+    }
 
     html += `
       <div class="tl-char-row ${statusClass}">
         <div class="tl-char-glyph">${escapeHtml(r.char)}</div>
         <div class="tl-char-info">
           <strong>${escapeHtml(r.char)}（需${r.needed}枚）</strong>
-          ${info}
+          ${allocHtml}
         </div>
         <span class="tl-status-tag ${tagClass}">${tagText}</span>
       </div>
