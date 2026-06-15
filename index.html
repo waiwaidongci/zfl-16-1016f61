@@ -51,7 +51,12 @@
         <aside class="panel inventory-panel">
           <div class="panel-head">
             <h2>字模库</h2>
-            <span id="inventoryCount"></span>
+            <div class="panel-head-actions">
+              <span id="inventoryCount"></span>
+              <button id="exportInventoryBtn" class="mini-btn" type="button" title="导出字模库">导出</button>
+              <button id="importInventoryBtn" class="mini-btn" type="button" title="导入字模库">导入</button>
+              <input id="importFileInput" type="file" accept="application/json,.json" hidden />
+            </div>
           </div>
           <form id="typeForm" class="type-form">
             <input id="charInput" maxlength="2" placeholder="字" required />
@@ -123,6 +128,40 @@
         <div class="modal-foot">
           <button id="tlCancel" type="button">取消</button>
           <button id="tlConfirm" class="primary" type="button" disabled>确认落版</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="importModal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>导入字模库</h2>
+          <button id="importClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="importSummary" class="import-summary"></div>
+          <div id="importErrors" class="import-errors" hidden></div>
+          <div class="import-options">
+            <h3>导入方式</h3>
+            <label class="import-option">
+              <input type="radio" name="importMode" value="merge" checked />
+              <div>
+                <strong>合并到现有字模库</strong>
+                <span>保留当前字模，跳过完全重复的条目</span>
+              </div>
+            </label>
+            <label class="import-option">
+              <input type="radio" name="importMode" value="overwrite" />
+              <div>
+                <strong>覆盖当前字模库</strong>
+                <span>清空现有字模，替换为导入内容</span>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button id="importCancel" type="button">取消</button>
+          <button id="importConfirm" class="primary" type="button" disabled>确认导入</button>
         </div>
       </div>
     </div>

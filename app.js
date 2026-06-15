@@ -56,7 +56,16 @@ const els = {
   tlAnalysis: document.querySelector("#tlAnalysis"),
   tlAnalysisContent: document.querySelector("#tlAnalysisContent"),
   tlCancel: document.querySelector("#tlCancel"),
-  tlConfirm: document.querySelector("#tlConfirm")
+  tlConfirm: document.querySelector("#tlConfirm"),
+  exportInventoryBtn: document.querySelector("#exportInventoryBtn"),
+  importInventoryBtn: document.querySelector("#importInventoryBtn"),
+  importFileInput: document.querySelector("#importFileInput"),
+  importModal: document.querySelector("#importModal"),
+  importClose: document.querySelector("#importClose"),
+  importCancel: document.querySelector("#importCancel"),
+  importConfirm: document.querySelector("#importConfirm"),
+  importSummary: document.querySelector("#importSummary"),
+  importErrors: document.querySelector("#importErrors")
 };
 
 function loadState() {
@@ -510,6 +519,226 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+const VALID_WEAR = ["新", "微磨", "旧痕"];
+
+function validateInventoryItem(item, index) {
+  const errors = [];
+  if (!item || typeof item !== "object") {
+    errors.push(`第${index + 1}条：不是有效对象`);
+    return { valid: false, errors };
+  }
+  if (typeof item.char !== "string" || item.char.trim() === "" || item.char.length > 2) {
+    errors.push(`第${index + 1}条：字段「字」不能为空且不超过2个字符`);
+  }
+  if (typeof item.style !== "string" || item.style.trim() === "") {
+    errors.push(`第${index + 1}条：字段「风格」不能为空`);
+  }
+  if (typeof item.size !== "number" || !Number.isInteger(item.size) || item.size < 8 || item.size > 72) {
+    errors.push(`第${index + 1}条：字段「字号」必须是8-72之间的整数`);
+  }
+  if (typeof item.quantity !== "number" || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+    errors.push(`第${index + 1}条：字段「数量」必须是1-99之间的整数`);
+  }
+  if (typeof item.wear !== "string" || !VALID_WEAR.includes(item.wear)) {
+    errors.push(`第${index + 1}条：字段「磨损状态」必须是「新」「微磨」「旧痕」之一`);
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function normalizeInventoryItem(item) {
+  return {
+    id: crypto.randomUUID(),
+    char: item.char.trim(),
+    style: item.style.trim(),
+    size: Number(item.size),
+    quantity: Number(item.quantity),
+    wear: item.wear
+  };
+}
+
+function itemSignature(item) {
+  return `${item.char}|${item.style}|${item.size}|${item.quantity}|${item.wear}`;
+}
+
+function exportInventory() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    count: state.inventory.length,
+    inventory: state.inventory.map((item) => ({
+      char: item.char,
+      style: item.style,
+      size: item.size,
+      quantity: item.quantity,
+      wear: item.wear
+    }))
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  link.download = `字模库_${stamp}.json`;
+  link.href = url;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+let pendingImport = null;
+
+function openImportModal() {
+  els.importFileInput.value = "";
+  els.importFileInput.click();
+}
+
+function handleImportFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      processImportData(parsed, file.name);
+    } catch {
+      alert("文件解析失败：不是有效的JSON格式");
+    }
+  };
+  reader.onerror = () => {
+    alert("文件读取失败");
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function processImportData(data, fileName) {
+  const rawArray = Array.isArray(data) ? data : data?.inventory;
+  if (!Array.isArray(rawArray)) {
+    alert("JSON格式不正确：缺少字模数组");
+    return;
+  }
+
+  const validItems = [];
+  const allErrors = [];
+
+  rawArray.forEach((item, idx) => {
+    const result = validateInventoryItem(item, idx);
+    if (result.valid) {
+      validItems.push(normalizeInventoryItem(item));
+    } else {
+      allErrors.push(...result.errors);
+    }
+  });
+
+  const currentSigs = new Set(state.inventory.map(itemSignature));
+  const importSigs = new Set();
+  let newUniqueCount = 0;
+  let duplicateCount = 0;
+
+  for (const item of validItems) {
+    const sig = itemSignature(item);
+    if (importSigs.has(sig)) {
+      duplicateCount += 1;
+      continue;
+    }
+    importSigs.add(sig);
+    if (!currentSigs.has(sig)) {
+      newUniqueCount += 1;
+    } else {
+      duplicateCount += 1;
+    }
+  }
+
+  pendingImport = {
+    validItems,
+    allErrors,
+    newUniqueCount,
+    duplicateCount,
+    fileName
+  };
+
+  renderImportModal();
+  els.importModal.hidden = false;
+}
+
+function renderImportModal() {
+  if (!pendingImport) return;
+  const { validItems, allErrors, newUniqueCount, duplicateCount, fileName } = pendingImport;
+  const mergeTotal = state.inventory.length + newUniqueCount;
+  const uniqueSet = new Set(validItems.map(itemSignature));
+  const overwriteTotal = uniqueSet.size;
+
+  let summaryHtml = `<p>文件：<strong>${escapeHtml(fileName)}</strong></p>`;
+  summaryHtml += `<div class="import-stats">`;
+  summaryHtml += `<span class="stat-item"><strong>${validItems.length}</strong>有效条目</span>`;
+  summaryHtml += `<span class="stat-item"><strong>${newUniqueCount}</strong>新增条目</span>`;
+  summaryHtml += `<span class="stat-item"><strong>${duplicateCount}</strong>重复条目</span>`;
+  if (allErrors.length > 0) {
+    summaryHtml += `<span class="stat-item warn"><strong>${allErrors.length}</strong>校验错误</span>`;
+  }
+  summaryHtml += `</div>`;
+  summaryHtml += `<p class="import-hint">当前字模库共 ${state.inventory.length} 枚</p>`;
+  summaryHtml += `<p class="import-hint">合并后预计：${mergeTotal} 枚（覆盖模式：${overwriteTotal} 枚）</p>`;
+
+  els.importSummary.innerHTML = summaryHtml;
+
+  if (allErrors.length > 0) {
+    els.importErrors.hidden = false;
+    els.importErrors.innerHTML = `
+      <h4>校验失败条目</h4>
+      <ul>${allErrors.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
+    `;
+  } else {
+    els.importErrors.hidden = true;
+    els.importErrors.innerHTML = "";
+  }
+
+  const canImport = validItems.length > 0 && overwriteTotal > 0;
+  els.importConfirm.disabled = !canImport;
+}
+
+function closeImportModal() {
+  els.importModal.hidden = true;
+  pendingImport = null;
+}
+
+function confirmImport() {
+  if (!pendingImport) return;
+
+  const mode = document.querySelector('input[name="importMode"]:checked').value;
+  const { validItems } = pendingImport;
+
+  const seen = new Set();
+  const dedupedImport = [];
+  for (const item of validItems) {
+    const sig = itemSignature(item);
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      dedupedImport.push(item);
+    }
+  }
+
+  if (mode === "overwrite") {
+    state.inventory = dedupedImport;
+    state.placements = [];
+    state.selectedTypeId = state.inventory[0]?.id || null;
+  } else {
+    const currentSigs = new Set(state.inventory.map(itemSignature));
+    for (const item of dedupedImport) {
+      const sig = itemSignature(item);
+      if (!currentSigs.has(sig)) {
+        state.inventory.push(item);
+        currentSigs.add(sig);
+      }
+    }
+    if (!state.inventory.find((i) => i.id === state.selectedTypeId)) {
+      state.selectedTypeId = state.inventory[0]?.id || null;
+    }
+  }
+
+  closeImportModal();
+  renderAll();
+}
+
 els.paperSize.addEventListener("change", () => {
   state.settings.paperSize = els.paperSize.value;
   const { cols, rows } = getGrid();
@@ -548,12 +777,24 @@ els.tlCancel.addEventListener("click", closeTextLayoutModal);
 els.tlAnalyze.addEventListener("click", analyzeText);
 els.tlConfirm.addEventListener("click", confirmTextLayout);
 
+els.exportInventoryBtn.addEventListener("click", exportInventory);
+els.importInventoryBtn.addEventListener("click", openImportModal);
+els.importFileInput.addEventListener("change", handleImportFile);
+els.importClose.addEventListener("click", closeImportModal);
+els.importCancel.addEventListener("click", closeImportModal);
+els.importConfirm.addEventListener("click", confirmImport);
+
 els.textLayoutModal.addEventListener("click", (event) => {
   if (event.target === els.textLayoutModal) closeTextLayoutModal();
 });
 
+els.importModal.addEventListener("click", (event) => {
+  if (event.target === els.importModal) closeImportModal();
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !els.textLayoutModal.hidden) closeTextLayoutModal();
+  if (event.key === "Escape" && !els.importModal.hidden) closeImportModal();
 });
 
 els.typeList.addEventListener("click", (event) => {

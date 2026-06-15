@@ -709,3 +709,150 @@ h3 {
   font-size: 11px;
   font-weight: 800;
 }
+
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-head-actions .mini-btn {
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.import-summary p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.import-summary p strong {
+  color: var(--ink);
+}
+
+.import-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stat-item strong {
+  color: var(--blue);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.stat-item.warn strong {
+  color: var(--red);
+}
+
+.import-hint {
+  margin: 10px 0 0 !important;
+  color: var(--muted);
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.import-errors {
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: rgba(164, 64, 55, 0.06);
+  padding: 12px;
+}
+
+.import-errors[hidden] {
+  display: none;
+}
+
+.import-errors h4 {
+  margin: 0 0 8px;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.import-errors ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.import-errors li {
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.import-options {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffdf8;
+}
+
+.import-options h3 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.import-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.import-option + .import-option {
+  margin-top: 4px;
+}
+
+.import-option:hover {
+  background: rgba(54, 95, 125, 0.06);
+}
+
+.import-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.import-option:has(input:checked) {
+  border-color: var(--blue);
+  background: rgba(54, 95, 125, 0.08);
+}
+
+.import-option strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.import-option span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
