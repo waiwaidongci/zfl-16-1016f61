@@ -307,11 +307,12 @@ function closeTemplateLibraryModal() {
 }
 
 function renderTemplateList() {
+  const activeTemplateId = getPageTemplateId();
   els.templateList.innerHTML = layoutTemplates
     .map((template) => {
       const { cols, rows } = getGrid(template.recommended.paperSize);
       const positions = template.getPositions(cols, rows);
-      const isActive = state.activeTemplateId === template.id;
+      const isActive = activeTemplateId === template.id;
       return `
         <article class="template-card ${isActive ? "active" : ""}" data-template-id="${template.id}">
           <div class="template-preview">
