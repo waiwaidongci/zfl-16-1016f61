@@ -1214,6 +1214,8 @@ const els = {
   tlAnalysisContent: document.querySelector("#tlAnalysisContent"),
   tlCancel: document.querySelector("#tlCancel"),
   tlConfirm: document.querySelector("#tlConfirm"),
+  tlSelectionHint: document.querySelector("#tlSelectionHint"),
+  tlSelectionInfo: document.querySelector("#tlSelectionInfo"),
   exportInventoryBtn: document.querySelector("#exportInventoryBtn"),
   importInventoryBtn: document.querySelector("#importInventoryBtn"),
   importFileInput: document.querySelector("#importFileInput"),
@@ -1637,6 +1639,79 @@ function renderDrafts() {
 
 let tlPlan = null;
 
+function getAvailableCellsForLayout(mode, direction) {
+  const currentPage = getCurrentPage();
+  const { cols, rows } = getGrid(currentPage.settings.paperSize);
+  const occupied = new Set(currentPage.placements.map((p) => placementKey(p.row, p.col)));
+  const emptyCells = [];
+
+  if (mode === "fillPage") {
+    if (direction === "horizontal") {
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
+            emptyCells.push({ row, col });
+          }
+        }
+      }
+    } else {
+      for (let col = 0; col < cols; col += 1) {
+        for (let row = 0; row < rows; row += 1) {
+          if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
+            emptyCells.push({ row, col });
+          }
+        }
+      }
+    }
+    return { cells: emptyCells, startCell: null };
+  }
+
+  const selectedCells = getSelectedCellsArray();
+  if (selectedCells.length === 0) {
+    return { cells: [], startCell: null, error: "未选中起始格" };
+  }
+
+  const sorted = selectedCells.sort((a, b) => a.row - b.row || a.col - b.col);
+  const startCell = sorted[0];
+
+  if (occupied.has(placementKey(startCell.row, startCell.col))) {
+    return { cells: [], startCell, error: "起始格已被占用" };
+  }
+  if (!isTemplateCell(startCell.row, startCell.col, currentPage)) {
+    return { cells: [], startCell, error: "起始格不在模板可用区域" };
+  }
+
+  const visited = new Set();
+
+  if (direction === "horizontal") {
+    for (let row = startCell.row; row < rows; row += 1) {
+      const startCol = (row === startCell.row) ? startCell.col : 0;
+      for (let col = startCol; col < cols; col += 1) {
+        const key = placementKey(row, col);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!occupied.has(key) && isTemplateCell(row, col, currentPage)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  } else {
+    for (let col = startCell.col; col < cols; col += 1) {
+      const startRow = (col === startCell.col) ? startCell.row : 0;
+      for (let row = startRow; row < rows; row += 1) {
+        const key = placementKey(row, col);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!occupied.has(key) && isTemplateCell(row, col, currentPage)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  }
+
+  return { cells: emptyCells, startCell };
+}
+
 function computeTextAllocation(text) {
   const usage = getUsage();
   const usedTypeIds = {};
@@ -1695,7 +1770,53 @@ function openTextLayoutModal() {
   els.tlConfirm.disabled = true;
   tlPlan = null;
   document.querySelector('input[name="tlDir"][value="horizontal"]').checked = true;
+  document.querySelector('input[name="tlMode"][value="fillPage"]').checked = true;
+  updateSelectionHint();
   els.tlText.focus();
+}
+
+function updateSelectionHint() {
+  const mode = document.querySelector('input[name="tlMode"]:checked').value;
+  if (mode !== "fromSelection") {
+    els.tlSelectionHint.hidden = true;
+    return;
+  }
+
+  const selectedCells = getSelectedCellsArray();
+  if (selectedCells.length === 0) {
+    els.tlSelectionHint.hidden = false;
+    els.tlSelectionInfo.textContent = "未检测到选中格，请先在版面上选择一个起始空格。";
+    return;
+  }
+
+  if (selectedCells.length > 1) {
+    const sorted = selectedCells.sort((a, b) => a.row - b.row || a.col - b.col);
+    const start = sorted[0];
+    els.tlSelectionHint.hidden = false;
+    els.tlSelectionInfo.textContent = `检测到多格选中，将从最左上角的格（第${start.row + 1}行，第${start.col + 1}列）开始填充。`;
+    return;
+  }
+
+  const cell = selectedCells[0];
+  const currentPage = getCurrentPage();
+  const occupied = new Set(currentPage.placements.map((p) => placementKey(p.row, p.col)));
+  const isOccupied = occupied.has(placementKey(cell.row, cell.col));
+  const isTemplateOk = isTemplateCell(cell.row, cell.col, currentPage);
+
+  if (isOccupied) {
+    els.tlSelectionHint.hidden = false;
+    els.tlSelectionInfo.textContent = `选中格（第${cell.row + 1}行，第${cell.col + 1}列）已被占用，请选择一个空格。`;
+    return;
+  }
+
+  if (!isTemplateOk) {
+    els.tlSelectionHint.hidden = false;
+    els.tlSelectionInfo.textContent = `选中格（第${cell.row + 1}行，第${cell.col + 1}列）不在模板可用区域内。`;
+    return;
+  }
+
+  els.tlSelectionHint.hidden = false;
+  els.tlSelectionInfo.textContent = `起始位置：第${cell.row + 1}行，第${cell.col + 1}列。将从此格按方向依次填充可用空格。`;
 }
 
 function closeTextLayoutModal() {
@@ -1707,10 +1828,26 @@ function analyzeText() {
   const text = els.tlText.value.replace(/\s/g, "");
   if (!text) return;
 
-  const { results } = computeTextAllocation(text);
+  const { results, usedTypeIds } = computeTextAllocation(text);
   const direction = document.querySelector('input[name="tlDir"]:checked').value;
+  const mode = document.querySelector('input[name="tlMode"]:checked').value;
 
-  tlPlan = { text, direction, results };
+  const layoutInfo = getAvailableCellsForLayout(mode, direction);
+
+  if (mode === "fromSelection" && layoutInfo.error) {
+    els.tlAnalysis.hidden = false;
+    els.tlAnalysisContent.innerHTML = `<div class="tl-short" style="display:block;padding:10px;text-align:center;">${escapeHtml(layoutInfo.error)}，无法进行落版分析。</div>`;
+    els.tlConfirm.disabled = true;
+    return;
+  }
+
+  const maxCharsFromInventory = Object.values(usedTypeIds).reduce((s, n) => s + n, 0);
+  const availableCells = layoutInfo.cells.length;
+  const actualPlaceable = Math.min(maxCharsFromInventory, availableCells);
+  const totalChars = text.length;
+  const willPlace = Math.min(actualPlaceable, totalChars);
+
+  tlPlan = { text, direction, mode, results, layoutInfo };
 
   const okCount = results.filter((r) => r.status === "ok").length;
   const lowCount = results.filter((r) => r.status === "low").length;
@@ -1720,6 +1857,19 @@ function analyzeText() {
   if (okCount) html += `<span class="tl-summary-item"><span class="dot green"></span>充足 ${okCount}字</span>`;
   if (lowCount) html += `<span class="tl-summary-item"><span class="dot gold"></span>不足 ${lowCount}字</span>`;
   if (missingCount) html += `<span class="tl-summary-item"><span class="dot red"></span>缺失 ${missingCount}字</span>`;
+  html += `</div>`;
+
+  html += `<div class="tl-summary" style="margin-top:8px;">`;
+  html += `<span class="tl-summary-item">输入字数：<strong>${totalChars}</strong></span>`;
+  html += `<span class="tl-summary-item">可用空格：<strong>${availableCells}</strong></span>`;
+  html += `<span class="tl-summary-item">字模可提供：<strong>${maxCharsFromInventory}</strong></span>`;
+  html += `<span class="tl-summary-item"><span style="color:var(--blue);font-weight:800;">实际可落：${willPlace}字</span></span>`;
+  if (willPlace < totalChars) {
+    html += `<span class="tl-summary-item"><span style="color:var(--red);font-weight:700;">（${totalChars - willPlace}字将无法落下）</span></span>`;
+  }
+  if (mode === "fromSelection" && layoutInfo.startCell) {
+    html += `<span class="tl-summary-item">起始格：第${layoutInfo.startCell.row + 1}行 第${layoutInfo.startCell.col + 1}列</span>`;
+  }
   html += `</div>`;
 
   for (const r of results) {
@@ -1769,10 +1919,8 @@ function confirmTextLayout() {
   pushHistory();
 
   const currentPage = getCurrentPage();
-  const { text, direction } = tlPlan;
-  const { cols, rows } = getGrid(currentPage.settings.paperSize);
+  const { text, direction, mode, layoutInfo } = tlPlan;
   const usage = getUsage();
-  const occupied = new Set(currentPage.placements.map((p) => placementKey(p.row, p.col)));
 
   const charAssign = [];
   const usedTypeIds = {};
@@ -1798,30 +1946,13 @@ function confirmTextLayout() {
     charAssign.push(best.id);
   }
 
-  const emptyCells = [];
-  if (direction === "horizontal") {
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
-          emptyCells.push({ row, col });
-        }
-      }
-    }
-  } else {
-    for (let col = 0; col < cols; col += 1) {
-      for (let row = 0; row < rows; row += 1) {
-        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, currentPage)) {
-          emptyCells.push({ row, col });
-        }
-      }
-    }
-  }
+  const cells = layoutInfo ? layoutInfo.cells : getAvailableCellsForLayout(mode, direction).cells;
 
   let cellIdx = 0;
   for (let i = 0; i < charAssign.length; i += 1) {
     if (charAssign[i] === null) continue;
-    if (cellIdx >= emptyCells.length) break;
-    const cell = emptyCells[cellIdx];
+    if (cellIdx >= cells.length) break;
+    const cell = cells[cellIdx];
     currentPage.placements.push({ row: cell.row, col: cell.col, typeId: charAssign[i] });
     cellIdx += 1;
   }
@@ -3679,6 +3810,23 @@ els.tlClose.addEventListener("click", closeTextLayoutModal);
 els.tlCancel.addEventListener("click", closeTextLayoutModal);
 els.tlAnalyze.addEventListener("click", analyzeText);
 els.tlConfirm.addEventListener("click", confirmTextLayout);
+
+document.querySelectorAll('input[name="tlMode"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    updateSelectionHint();
+    if (!els.tlAnalysis.hidden) {
+      analyzeText();
+    }
+  });
+});
+
+document.querySelectorAll('input[name="tlDir"]').forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (!els.tlAnalysis.hidden) {
+      analyzeText();
+    }
+  });
+});
 
 els.exportInventoryBtn.addEventListener("click", exportInventory);
 els.importInventoryBtn.addEventListener("click", openImportModal);

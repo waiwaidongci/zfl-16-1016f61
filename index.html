@@ -241,6 +241,14 @@
             输入短句
             <textarea id="tlText" rows="3" placeholder="例：山月风花茶雨"></textarea>
           </label>
+          <div class="tl-mode">
+            <span>落版模式</span>
+            <label class="tl-radio"><input type="radio" name="tlMode" value="fillPage" checked />整页填充</label>
+            <label class="tl-radio"><input type="radio" name="tlMode" value="fromSelection" />从选中格开始</label>
+          </div>
+          <div id="tlSelectionHint" class="tl-selection-hint" hidden>
+            <span id="tlSelectionInfo"></span>
+          </div>
           <div class="tl-direction">
             <span>填入方向</span>
             <label class="tl-radio"><input type="radio" name="tlDir" value="horizontal" checked />从左到右</label>
