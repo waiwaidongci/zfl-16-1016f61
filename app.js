@@ -257,6 +257,11 @@ function duplicateWork(workId) {
   if (!sourceState) return;
 
   const newState = structuredClone(sourceState);
+  newState.exportSettings = structuredClone(
+    workId === archiveStore.currentWorkId && state.exportSettings
+      ? state.exportSettings
+      : (sourceState.exportSettings || printPreviewDefaults)
+  );
 
   const typeIdMap = new Map();
   const remapPlacements = (placements = []) => placements.map(p => {
