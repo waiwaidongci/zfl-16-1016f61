@@ -2820,10 +2820,9 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
         const remainingAvailable = matchingTypes.reduce(
           (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0
         );
-        inventoryShortages[ch] = { char: ch, needed: 0, available: remainingAvailable, styles: [] };
+        inventoryShortages[ch] = { char: ch, needed: charCount[ch], available: remainingAvailable, styles: [] };
         inventoryShortages[ch].styles = matchingTypes.map(t => t.style);
       }
-      inventoryShortages[ch].needed += 1;
       charAssignments.push({ char: ch, typeId: null, status: "shortage" });
       continue;
     }
