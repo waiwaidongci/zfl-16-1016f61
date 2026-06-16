@@ -7,7 +7,8 @@ const archiveStore = {
   currentWorkId: null,
   currentView: "editor",
   searchQuery: "",
-  filterMode: "active"
+  filterMode: "active",
+  sortMode: "updatedAt"
 };
 
 function createWorkMetadata(name) {
@@ -349,6 +350,19 @@ function getFilteredWorks() {
   }
   if (query) {
     works = works.filter(w => w.name.toLowerCase().includes(query));
+  }
+  const sortMode = archiveStore.sortMode || "updatedAt";
+  if (sortMode === "pages" || sortMode === "chars") {
+    const worksWithStats = works.map(work => ({
+      work,
+      stats: getWorkStats(work.id)
+    }));
+    worksWithStats.sort((a, b) => {
+      return sortMode === "pages"
+        ? b.stats.pages - a.stats.pages
+        : b.stats.chars - a.stats.chars;
+    });
+    return worksWithStats.map(item => item.work);
   }
   return works.sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -4245,6 +4259,16 @@ archiveFilterTabs.forEach((tab) => {
     archiveFilterTabs.forEach((t) => t.classList.remove("active"));
     tab.classList.add("active");
     archiveStore.filterMode = tab.dataset.archiveFilter;
+    renderArchiveView();
+  });
+});
+
+const archiveSortTabs = document.querySelectorAll("[data-archive-sort]");
+archiveSortTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    archiveSortTabs.forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    archiveStore.sortMode = tab.dataset.archiveSort;
     renderArchiveView();
   });
 });
