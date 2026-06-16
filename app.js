@@ -317,6 +317,334 @@ function duplicateWork(workId) {
   renderArchiveView();
 }
 
+const WORK_EXPORT_VERSION = 1;
+
+function exportWork(workId) {
+  const sourceMeta = archiveStore.works[workId];
+  if (!sourceMeta) return;
+  const sourceState = loadWorkFromArchive(workId);
+  if (!sourceState) return;
+
+  const exportData = {
+    version: WORK_EXPORT_VERSION,
+    type: "work",
+    exportedAt: new Date().toISOString(),
+    metadata: {
+      name: sourceMeta.name,
+      createdAt: sourceMeta.createdAt,
+      updatedAt: sourceMeta.updatedAt,
+      archived: sourceMeta.archived
+    },
+    workState: {
+      inventory: structuredClone(sourceState.inventory),
+      drafts: structuredClone(sourceState.drafts || []),
+      workTitle: sourceState.workTitle,
+      pages: structuredClone(sourceState.pages),
+      exportSettings: structuredClone(sourceState.exportSettings || printPreviewDefaults),
+      usageTab: sourceState.usageTab || "current"
+    }
+  };
+
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const safeName = sourceMeta.name.replace(/[\\/:*?"<>|]/g, "_");
+  link.download = `作品_${safeName}_${stamp}.json`;
+  link.href = url;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+let pendingWorkImport = null;
+let workImportFileInput = null;
+
+function getWorkImportFileInput() {
+  if (!workImportFileInput) {
+    workImportFileInput = document.createElement("input");
+    workImportFileInput.type = "file";
+    workImportFileInput.accept = "application/json,.json";
+    workImportFileInput.hidden = true;
+    workImportFileInput.addEventListener("change", handleWorkImportFile);
+    document.body.appendChild(workImportFileInput);
+  }
+  return workImportFileInput;
+}
+
+function openWorkImportModal() {
+  const input = getWorkImportFileInput();
+  input.value = "";
+  input.click();
+}
+
+function handleWorkImportFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      processWorkImportData(parsed, file.name);
+    } catch {
+      alert("文件解析失败：不是有效的JSON格式");
+    }
+  };
+  reader.onerror = () => {
+    alert("文件读取失败");
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function normalizeLegacyWorkData(data) {
+  const workState = { ...structuredClone(defaultState), ...data };
+
+  if (!workState.pages || workState.pages.length === 0) {
+    const migratedPage = createDefaultPage("第1页");
+    if (data.settings) {
+      migratedPage.settings = {
+        paperSize: data.settings.paperSize || "postcard",
+        flowMode: data.settings.flowMode || "horizontal",
+        gridGap: data.settings.gridGap || 8
+      };
+      workState.workTitle = data.settings.workTitle || "晚风小笺";
+    }
+    if (data.placements) {
+      migratedPage.placements = data.placements;
+    }
+    if (data.activeTemplateId !== undefined) {
+      migratedPage.activeTemplateId = data.activeTemplateId;
+    }
+    workState.pages = [migratedPage];
+    workState.currentPageId = migratedPage.id;
+  }
+
+  if (!workState.usageTab) workState.usageTab = "current";
+  if (!workState.exportSettings) {
+    workState.exportSettings = structuredClone(printPreviewDefaults);
+  }
+  if (!workState.drafts) workState.drafts = [];
+
+  return workState;
+}
+
+function processWorkImportData(data, fileName) {
+  let importData;
+  let isLegacy = false;
+
+  if (data && data.type === "work" && data.version && data.workState && data.metadata) {
+    importData = {
+      metadata: data.metadata,
+      workState: data.workState
+    };
+  } else if (data && (data.inventory || data.pages || data.placements || data.settings)) {
+    isLegacy = true;
+    const workState = normalizeLegacyWorkData(data);
+    importData = {
+      metadata: {
+        name: workState.workTitle || "导入的作品",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        archived: false
+      },
+      workState
+    };
+  } else {
+    alert("JSON格式不正确：无法识别的作品数据格式");
+    return;
+  }
+
+  const errors = validateWorkImportData(importData.workState);
+
+  const stats = {
+    pages: importData.workState.pages?.length || 0,
+    types: importData.workState.inventory?.length || 0,
+    chars: importData.workState.pages?.reduce((sum, p) => sum + (p.placements?.length || 0), 0) || 0,
+    drafts: importData.workState.drafts?.length || 0
+  };
+
+  pendingWorkImport = {
+    importData,
+    isLegacy,
+    errors,
+    stats,
+    fileName
+  };
+
+  renderWorkImportModal();
+  const modal = document.getElementById("workImportModal");
+  if (modal) modal.hidden = false;
+}
+
+function validateWorkImportData(workState) {
+  const errors = [];
+
+  if (!workState.inventory || !Array.isArray(workState.inventory)) {
+    errors.push("字模库数据无效");
+  } else {
+    workState.inventory.forEach((item, idx) => {
+      if (!item.char || !item.style) {
+        errors.push(`字模库第${idx + 1}条缺少必要字段（字、风格）`);
+      }
+    });
+  }
+
+  if (!workState.pages || !Array.isArray(workState.pages) || workState.pages.length === 0) {
+    errors.push("页面数据无效或为空");
+  } else {
+    workState.pages.forEach((page, idx) => {
+      if (!page.id) errors.push(`第${idx + 1}页缺少页面ID`);
+      if (!page.settings) errors.push(`第${idx + 1}页缺少设置信息`);
+      if (!Array.isArray(page.placements)) errors.push(`第${idx + 1}页落字数据无效`);
+    });
+  }
+
+  return errors;
+}
+
+function remapWorkIds(workState) {
+  const newState = structuredClone(workState);
+  const typeIdMap = new Map();
+
+  const remapPlacements = (placements = []) => placements.map(p => {
+    const newPlacement = { ...p };
+    if (typeIdMap.has(newPlacement.typeId)) {
+      newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
+    }
+    return newPlacement;
+  });
+
+  newState.inventory = (newState.inventory || []).map(item => {
+    const newItem = { ...item, id: crypto.randomUUID() };
+    typeIdMap.set(item.id, newItem.id);
+    return newItem;
+  });
+
+  if (newState.selectedTypeId && typeIdMap.has(newState.selectedTypeId)) {
+    newState.selectedTypeId = typeIdMap.get(newState.selectedTypeId);
+  } else if (newState.inventory.length > 0) {
+    newState.selectedTypeId = newState.inventory[0].id;
+  }
+
+  const oldCurrentPageId = newState.currentPageId;
+  const oldPages = newState.pages || [];
+  const oldCurrentIndex = oldCurrentPageId
+    ? oldPages.findIndex(p => p.id === oldCurrentPageId)
+    : -1;
+
+  newState.pages = oldPages.map(page => {
+    const newPage = { ...page, id: crypto.randomUUID() };
+    newPage.placements = remapPlacements(page.placements);
+    return newPage;
+  });
+
+  if (newState.pages.length > 0) {
+    if (oldCurrentIndex >= 0 && oldCurrentIndex < newState.pages.length) {
+      newState.currentPageId = newState.pages[oldCurrentIndex].id;
+    } else {
+      newState.currentPageId = newState.pages[0].id;
+    }
+  } else {
+    newState.currentPageId = null;
+  }
+
+  newState.drafts = (newState.drafts || []).map(d => {
+    const newDraft = { ...d, id: crypto.randomUUID() };
+    if (newDraft.pages) {
+      newDraft.pages = newDraft.pages.map(p => {
+        const newPage = { ...p, id: crypto.randomUUID() };
+        if (newPage.placements) {
+          newPage.placements = remapPlacements(newPage.placements);
+        }
+        return newPage;
+      });
+    }
+    if (newDraft.placements) {
+      newDraft.placements = remapPlacements(newDraft.placements);
+    }
+    return newDraft;
+  });
+
+  return newState;
+}
+
+function renderWorkImportModal() {
+  if (!pendingWorkImport) return;
+  const { importData, isLegacy, errors, stats, fileName } = pendingWorkImport;
+
+  const summaryEl = document.getElementById("workImportSummary");
+  const errorsEl = document.getElementById("workImportErrors");
+  const confirmBtn = document.getElementById("workImportConfirm");
+
+  let summaryHtml = `<p>文件：<strong>${escapeHtml(fileName)}</strong></p>`;
+  if (isLegacy) {
+    summaryHtml += `<p class="import-hint" style="color:var(--gold);">📜 检测为旧版单作品数据格式，已自动迁移</p>`;
+  }
+  summaryHtml += `<div class="import-stats">`;
+  summaryHtml += `<span class="stat-item"><strong>${stats.pages}</strong>页面</span>`;
+  summaryHtml += `<span class="stat-item"><strong>${stats.types}</strong>字模</span>`;
+  summaryHtml += `<span class="stat-item"><strong>${stats.chars}</strong>落字</span>`;
+  summaryHtml += `<span class="stat-item"><strong>${stats.drafts}</strong>草稿</span>`;
+  summaryHtml += `</div>`;
+  summaryHtml += `<p class="import-hint">作品名称：${escapeHtml(importData.metadata.name || "未命名")}</p>`;
+  summaryHtml += `<p class="import-hint">导入后将生成新的作品，不会覆盖现有作品</p>`;
+
+  if (summaryEl) summaryEl.innerHTML = summaryHtml;
+
+  if (errors.length > 0) {
+    if (errorsEl) {
+      errorsEl.hidden = false;
+      errorsEl.innerHTML = `
+        <h4>数据警告</h4>
+        <ul>${errors.map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
+      `;
+    }
+  } else {
+    if (errorsEl) {
+      errorsEl.hidden = true;
+      errorsEl.innerHTML = "";
+    }
+  }
+
+  if (confirmBtn) {
+    confirmBtn.disabled = stats.pages === 0 || stats.types === 0;
+  }
+}
+
+function closeWorkImportModal() {
+  const modal = document.getElementById("workImportModal");
+  if (modal) modal.hidden = true;
+  pendingWorkImport = null;
+}
+
+function confirmWorkImport() {
+  if (!pendingWorkImport) return;
+
+  const { importData } = pendingWorkImport;
+  const remappedState = remapWorkIds(importData.workState);
+
+  const workName = importData.metadata.name || "导入的作品";
+  const metadata = createWorkMetadata(workName);
+  const workId = metadata.id;
+
+  if (importData.metadata.createdAt) {
+    metadata.createdAt = importData.metadata.createdAt;
+  }
+  metadata.updatedAt = Date.now();
+  if (importData.metadata.archived !== undefined) {
+    metadata.archived = importData.metadata.archived;
+  }
+
+  archiveStore.works[workId] = metadata;
+  localStorage.setItem(`${archiveStorageKey}-${workId}`, JSON.stringify(remappedState));
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+
+  closeWorkImportModal();
+  renderArchiveView();
+  alert(`作品「${workName}」导入成功！`);
+}
+
 function toggleArchiveWork(workId) {
   const meta = archiveStore.works[workId];
   if (!meta) return;
@@ -447,6 +775,7 @@ function renderArchiveView() {
           <button class="work-card-btn primary" data-action="edit" type="button">编辑</button>
           <button class="work-card-btn" data-action="duplicate" type="button">复制</button>
           <button class="work-card-btn" data-action="rename" type="button">改名</button>
+          <button class="work-card-btn" data-action="export" type="button">导出</button>
           <button class="work-card-btn ${work.archived ? "" : "warn"}" data-action="toggleArchive" type="button">
             ${work.archived ? "取消归档" : "归档"}
           </button>
@@ -547,6 +876,9 @@ function handleArchiveCardClick(event) {
       break;
     case "rename":
       openWorkNameModal("rename", workId);
+      break;
+    case "export":
+      exportWork(workId);
       break;
     case "toggleArchive": {
       const meta = archiveStore.works[workId];
@@ -4511,6 +4843,29 @@ els.importFileInput.addEventListener("change", handleImportFile);
 els.importClose.addEventListener("click", closeImportModal);
 els.importCancel.addEventListener("click", closeImportModal);
 els.importConfirm.addEventListener("click", confirmImport);
+
+const importWorkBtn = document.getElementById("importWorkBtn");
+if (importWorkBtn) {
+  importWorkBtn.addEventListener("click", openWorkImportModal);
+}
+const workImportClose = document.getElementById("workImportClose");
+if (workImportClose) {
+  workImportClose.addEventListener("click", closeWorkImportModal);
+}
+const workImportCancel = document.getElementById("workImportCancel");
+if (workImportCancel) {
+  workImportCancel.addEventListener("click", closeWorkImportModal);
+}
+const workImportConfirm = document.getElementById("workImportConfirm");
+if (workImportConfirm) {
+  workImportConfirm.addEventListener("click", confirmWorkImport);
+}
+const workImportModal = document.getElementById("workImportModal");
+if (workImportModal) {
+  workImportModal.addEventListener("click", (event) => {
+    if (event.target === workImportModal) closeWorkImportModal();
+  });
+}
 
 els.templateLibraryBtn.addEventListener("click", openTemplateLibraryModal);
 els.tlLibraryClose.addEventListener("click", closeTemplateLibraryModal);

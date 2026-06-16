@@ -50,6 +50,7 @@
               <button class="archive-sort-tab" data-archive-sort="pages" type="button">页面数量</button>
               <button class="archive-sort-tab" data-archive-sort="chars" type="button">落字数量</button>
             </div>
+            <button id="importWorkBtn" type="button">📥 导入作品</button>
             <button id="newWorkBtn" class="primary" type="button">+ 新建作品</button>
           </div>
         </div>
@@ -311,6 +312,23 @@
         <div class="modal-foot">
           <button id="importCancel" type="button">取消</button>
           <button id="importConfirm" class="primary" type="button" disabled>确认导入</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="workImportModal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2>导入作品</h2>
+          <button id="workImportClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="workImportSummary" class="import-summary"></div>
+          <div id="workImportErrors" class="import-errors" hidden></div>
+        </div>
+        <div class="modal-foot">
+          <button id="workImportCancel" type="button">取消</button>
+          <button id="workImportConfirm" class="primary" type="button" disabled>确认导入</button>
         </div>
       </div>
     </div>
