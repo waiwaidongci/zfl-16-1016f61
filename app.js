@@ -1640,6 +1640,20 @@ const els = {
   tlConfirm: document.querySelector("#tlConfirm"),
   tlSelectionHint: document.querySelector("#tlSelectionHint"),
   tlSelectionInfo: document.querySelector("#tlSelectionInfo"),
+  slpPreview: document.querySelector("#slPreview"),
+  slpTotalChars: document.querySelector("#slTotalChars"),
+  slpPlacedChars: document.querySelector("#slPlacedChars"),
+  slpMissingChars: document.querySelector("#slMissingChars"),
+  slpShortageChars: document.querySelector("#slShortageChars"),
+  slpPagesCount: document.querySelector("#slPagesCount"),
+  slpNewPagesBadge: document.querySelector("#slNewPagesBadge"),
+  slpNewPagesCount: document.querySelector("#slNewPagesCount"),
+  slpPagesList: document.querySelector("#slPagesList"),
+  slpMissingList: document.querySelector("#slMissingList"),
+  slpShortageList: document.querySelector("#slShortageList"),
+  slpAllocationList: document.querySelector("#slAllocationList"),
+  slpTabs: document.querySelectorAll(".sl-tab"),
+  slpTabContents: document.querySelectorAll(".sl-tab-content"),
   exportInventoryBtn: document.querySelector("#exportInventoryBtn"),
   importInventoryBtn: document.querySelector("#importInventoryBtn"),
   importFileInput: document.querySelector("#importFileInput"),
@@ -2134,6 +2148,7 @@ function renderDrafts() {
 }
 
 let tlPlan = null;
+let smartLayoutPlan = null;
 
 function getAvailableCellsForLayout(mode, direction) {
   const currentPage = getCurrentPage();
@@ -2261,13 +2276,14 @@ function computeTextAllocation(text) {
 function openTextLayoutModal() {
   els.textLayoutModal.hidden = false;
   els.tlText.value = "";
-  els.tlAnalysis.hidden = true;
-  els.tlAnalysisContent.innerHTML = "";
+  els.slpPreview.hidden = true;
   els.tlConfirm.disabled = true;
   tlPlan = null;
+  smartLayoutPlan = null;
   document.querySelector('input[name="tlDir"][value="horizontal"]').checked = true;
   document.querySelector('input[name="tlMode"][value="fillPage"]').checked = true;
   updateSelectionHint();
+  switchSlpTab("pages");
   els.tlText.focus();
 }
 
@@ -2318,55 +2334,214 @@ function updateSelectionHint() {
 function closeTextLayoutModal() {
   els.textLayoutModal.hidden = true;
   tlPlan = null;
+  smartLayoutPlan = null;
+}
+
+function getCurrentPageIndex() {
+  return getPageIndex(state.currentPageId);
 }
 
 function analyzeText() {
-  const text = els.tlText.value.replace(/\s/g, "");
-  if (!text) return;
-
-  const { results, usedTypeIds } = computeTextAllocation(text);
-  const direction = document.querySelector('input[name="tlDir"]:checked').value;
-  const mode = document.querySelector('input[name="tlMode"]:checked').value;
-
-  const layoutInfo = getAvailableCellsForLayout(mode, direction);
-
-  if (mode === "fromSelection" && layoutInfo.error) {
-    els.tlAnalysis.hidden = false;
-    els.tlAnalysisContent.innerHTML = `<div class="tl-short" style="display:block;padding:10px;text-align:center;">${escapeHtml(layoutInfo.error)}，无法进行落版分析。</div>`;
-    els.tlConfirm.disabled = true;
+  const text = els.tlText.value;
+  if (!text || !text.trim()) {
+    alert("请输入要排版的文本");
     return;
   }
 
-  const maxCharsFromInventory = Object.values(usedTypeIds).reduce((s, n) => s + n, 0);
-  const availableCells = layoutInfo.cells.length;
-  const actualPlaceable = Math.min(maxCharsFromInventory, availableCells);
-  const totalChars = text.length;
-  const willPlace = Math.min(actualPlaceable, totalChars);
+  const direction = document.querySelector('input[name="tlDir"]:checked').value;
+  const mode = document.querySelector('input[name="tlMode"]:checked').value;
 
-  tlPlan = { text, direction, mode, results, layoutInfo };
+  let startCell = null;
+  const startPageIndex = getCurrentPageIndex();
 
-  const okCount = results.filter((r) => r.status === "ok").length;
-  const lowCount = results.filter((r) => r.status === "low").length;
-  const missingCount = results.filter((r) => r.status === "missing").length;
+  if (mode === "fromSelection") {
+    const selectedCells = getSelectedCellsArray();
+    if (selectedCells.length === 0) {
+      alert("请先在版面上选择一个起始空格");
+      return;
+    }
+    const sorted = selectedCells.sort((a, b) => a.row - b.row || a.col - b.col);
+    startCell = sorted[0];
+    const currentPage = getCurrentPage();
+    const occupied = new Set(currentPage.placements.map((p) => placementKey(p.row, p.col)));
+    if (occupied.has(placementKey(startCell.row, startCell.col))) {
+      alert("起始格已被占用，请选择一个空格");
+      return;
+    }
+    if (!isTemplateCell(startCell.row, startCell.col, currentPage)) {
+      alert("起始格不在模板可用区域内");
+      return;
+    }
+  }
 
-  let html = `<div class="tl-summary">`;
-  if (okCount) html += `<span class="tl-summary-item"><span class="dot green"></span>充足 ${okCount}字</span>`;
-  if (lowCount) html += `<span class="tl-summary-item"><span class="dot gold"></span>不足 ${lowCount}字</span>`;
-  if (missingCount) html += `<span class="tl-summary-item"><span class="dot red"></span>缺失 ${missingCount}字</span>`;
+  smartLayoutPlan = computeSmartLayout(text, direction, mode, startPageIndex, startCell);
+  renderSmartLayoutPreview();
+
+  els.slpPreview.hidden = false;
+  els.tlConfirm.disabled = smartLayoutPlan.totalPlaced === 0;
+
+  switchSlpTab("pages");
+}
+
+function switchSlpTab(tabName) {
+  if (els.slpTabs && els.slpTabs.length) {
+    els.slpTabs.forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.slTab === tabName);
+    });
+  }
+  if (els.slpTabContents && els.slpTabContents.length) {
+    els.slpTabContents.forEach((content) => {
+      content.hidden = content.dataset.slTabContent !== tabName;
+    });
+  }
+}
+
+function renderSmartLayoutPreview() {
+  if (!smartLayoutPlan) return;
+
+  const plan = smartLayoutPlan;
+
+  els.slpTotalChars.textContent = plan.totalEffectiveChars;
+  els.slpPlacedChars.textContent = plan.totalPlaced;
+  els.slpMissingChars.textContent = plan.totalMissing;
+  els.slpShortageChars.textContent = plan.totalShortage;
+  els.slpPagesCount.textContent = plan.pages.length;
+
+  if (plan.newPagesCount > 0) {
+    els.slpNewPagesBadge.hidden = false;
+    els.slpNewPagesCount.textContent = plan.newPagesCount;
+  } else {
+    els.slpNewPagesBadge.hidden = true;
+  }
+
+  renderSlpPagesList();
+  renderSlpMissingList();
+  renderSlpShortageList();
+  renderSlpAllocationList();
+}
+
+function renderSlpPagesList() {
+  if (!smartLayoutPlan || !els.slpPagesList) return;
+
+  const pages = smartLayoutPlan.pages;
+
+  if (pages.length === 0) {
+    els.slpPagesList.innerHTML = `<div class="sl-empty">没有可排版的页面</div>`;
+    return;
+  }
+
+  let html = "";
+  for (const page of pages) {
+    const paperSizeLabel = page.paperSize === "bookmark" ? "书签" : page.paperSize === "square" ? "方形" : "明信片";
+    const newBadge = page.isNew ? `<span class="sl-page-new-badge">新增</span>` : "";
+    const missingInfo = page.missingCount > 0 ? `<span class="sl-page-stat sl-stat-missing">跳过缺字 ${page.missingCount}</span>` : "";
+    const shortageInfo = page.shortageCount > 0 ? `<span class="sl-page-stat sl-stat-shortage">库存不足 ${page.shortageCount}</span>` : "";
+
+    html += `
+      <div class="sl-page-card">
+        <div class="sl-page-card-head">
+          <span class="sl-page-name">${escapeHtml(page.pageName)}${newBadge}</span>
+          <span class="sl-page-size">${paperSizeLabel}</span>
+        </div>
+        <div class="sl-page-stats">
+          <span class="sl-page-stat sl-stat-ok">预计落字 <strong>${page.placementCount}</strong></span>
+          ${missingInfo}
+          ${shortageInfo}
+        </div>
+        <div class="sl-page-preview">
+          ${renderMiniPagePreview(page)}
+        </div>
+      </div>
+    `;
+  }
+
+  els.slpPagesList.innerHTML = html;
+}
+
+function renderMiniPagePreview(page) {
+  const { cols, rows } = getGrid(page.paperSize);
+  const cellSize = Math.min(8, Math.floor(200 / cols));
+  const gap = 1;
+
+  const placedMap = new Map(page.placements.map((p) => [placementKey(p.row, p.col), p]));
+
+  let svg = `<svg width="${cols * (cellSize + gap) + gap}" height="${rows * (cellSize + gap) + gap}" class="sl-mini-grid">`;
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const x = c * (cellSize + gap) + gap;
+      const y = r * (cellSize + gap) + gap;
+      const key = placementKey(r, c);
+      const isPlaced = placedMap.has(key);
+      const fill = isPlaced ? "var(--gold)" : "rgba(139, 119, 101, 0.12)";
+      svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" fill="${fill}" rx="1"/>`;
+    }
+  }
+  svg += `</svg>`;
+
+  return svg;
+}
+
+function renderSlpMissingList() {
+  if (!smartLayoutPlan || !els.slpMissingList) return;
+
+  const missingChars = smartLayoutPlan.missingChars;
+
+  if (missingChars.length === 0) {
+    els.slpMissingList.innerHTML = `<div class="sl-empty">🎉 没有缺字，字模库中包含所有文字</div>`;
+    return;
+  }
+
+  let html = `<div class="sl-missing-header">共 <strong>${missingChars.length}</strong> 个缺字，排版时将自动跳过</div>`;
+  html += `<div class="sl-missing-chars">`;
+  for (const ch of missingChars) {
+    html += `<span class="sl-missing-char">${escapeHtml(ch)}</span>`;
+  }
   html += `</div>`;
 
-  html += `<div class="tl-summary" style="margin-top:8px;">`;
-  html += `<span class="tl-summary-item">输入字数：<strong>${totalChars}</strong></span>`;
-  html += `<span class="tl-summary-item">可用空格：<strong>${availableCells}</strong></span>`;
-  html += `<span class="tl-summary-item">字模可提供：<strong>${maxCharsFromInventory}</strong></span>`;
-  html += `<span class="tl-summary-item"><span style="color:var(--blue);font-weight:800;">实际可落：${willPlace}字</span></span>`;
-  if (willPlace < totalChars) {
-    html += `<span class="tl-summary-item"><span style="color:var(--red);font-weight:700;">（${totalChars - willPlace}字将无法落下）</span></span>`;
+  els.slpMissingList.innerHTML = html;
+}
+
+function renderSlpShortageList() {
+  if (!smartLayoutPlan || !els.slpShortageList) return;
+
+  const shortages = smartLayoutPlan.inventoryShortages;
+
+  if (shortages.length === 0) {
+    els.slpShortageList.innerHTML = `<div class="sl-empty">✅ 字模库存充足，所有可落字都有足够库存</div>`;
+    return;
   }
-  if (mode === "fromSelection" && layoutInfo.startCell) {
-    html += `<span class="tl-summary-item">起始格：第${layoutInfo.startCell.row + 1}行 第${layoutInfo.startCell.col + 1}列</span>`;
+
+  let html = `<div class="sl-shortage-header">共 <strong>${shortages.length}</strong> 种字库存不足，超出部分将自动跳过</div>`;
+  html += `<div class="sl-shortage-list">`;
+  for (const item of shortages) {
+    html += `
+      <div class="sl-shortage-item">
+        <div class="sl-shortage-char">${escapeHtml(item.char)}</div>
+        <div class="sl-shortage-info">
+          <div>需要 <strong>${item.needed}</strong> 枚，可用 <strong>${item.available}</strong> 枚</div>
+          <div class="sl-shortage-styles">${item.styles.map(s => escapeHtml(s)).join("、")}</div>
+        </div>
+        <span class="sl-shortage-tag">缺 ${item.needed - item.available} 枚</span>
+      </div>
+    `;
   }
   html += `</div>`;
+
+  els.slpShortageList.innerHTML = html;
+}
+
+function renderSlpAllocationList() {
+  if (!smartLayoutPlan || !els.slpAllocationList) return;
+
+  const results = smartLayoutPlan.perCharResults;
+
+  if (results.length === 0) {
+    els.slpAllocationList.innerHTML = `<div class="sl-empty">没有字模分配数据</div>`;
+    return;
+  }
+
+  let html = `<div class="sl-allocation-header">共涉及 <strong>${results.length}</strong> 种文字，优先使用剩余库存多的字模</div>`;
+  html += `<div class="sl-allocation-list">`;
 
   for (const r of results) {
     const statusClass = r.status === "ok" ? "status-ok" : r.status === "low" ? "status-low" : "status-missing";
@@ -2375,86 +2550,407 @@ function analyzeText() {
 
     let allocHtml = "";
     if (r.status === "missing") {
-      allocHtml = `<span>字模库中无此字</span>`;
+      allocHtml = `<span class="sl-alloc-none">字模库中无此字</span>`;
     } else {
       const allocatedCount = r.allocations.reduce((sum, a) => sum + a.count, 0);
-      allocHtml = `<span class="tl-total">总可用 ${r.totalAvailable} / 需 ${r.needed}（将分配 ${allocatedCount}）</span>`;
+      allocHtml = `<div class="sl-alloc-total">总可用 ${r.totalAvailable} / 需 ${r.needed}（分配 ${allocatedCount}）</div>`;
       if (r.allocations.length > 0) {
-        allocHtml += `<div class="tl-alloc-list">`;
+        allocHtml += `<div class="sl-alloc-items">`;
         for (const alloc of r.allocations) {
-          allocHtml += `<span class="tl-alloc-item">${escapeHtml(alloc.style)} · 分配${alloc.count}/${alloc.available}</span>`;
+          allocHtml += `<span class="sl-alloc-item">${escapeHtml(alloc.style)} · ${alloc.count}/${alloc.quantity}</span>`;
         }
         allocHtml += `</div>`;
       }
       if (allocatedCount < r.needed) {
         const short = r.needed - allocatedCount;
-        allocHtml += `<span class="tl-short">仍缺 ${short} 枚</span>`;
+        allocHtml += `<div class="sl-alloc-short">缺 ${short} 枚</div>`;
       }
     }
 
     html += `
-      <div class="tl-char-row ${statusClass}">
-        <div class="tl-char-glyph">${escapeHtml(r.char)}</div>
-        <div class="tl-char-info">
-          <strong>${escapeHtml(r.char)}（需${r.needed}枚）</strong>
+      <div class="sl-alloc-row ${statusClass}">
+        <div class="sl-alloc-glyph">${escapeHtml(r.char)}</div>
+        <div class="sl-alloc-info">
+          <div class="sl-alloc-title">${escapeHtml(r.char)}（需${r.needed}枚）</div>
           ${allocHtml}
         </div>
-        <span class="tl-status-tag ${tagClass}">${tagText}</span>
+        <span class="sl-alloc-tag ${tagClass}">${tagText}</span>
       </div>
     `;
   }
 
-  els.tlAnalysisContent.innerHTML = html;
-  els.tlAnalysis.hidden = false;
-  els.tlConfirm.disabled = false;
+  html += `</div>`;
+  els.slpAllocationList.innerHTML = html;
 }
 
 function confirmTextLayout() {
-  if (!tlPlan) return;
+  if (!smartLayoutPlan) return;
+
+  const plan = smartLayoutPlan;
+
+  if (plan.totalPlaced === 0) {
+    alert("没有可写入的落字，请检查输入文本和字模库存");
+    return;
+  }
+
+  const confirmMsg = `确认将排版方案写入版面？\n\n` +
+    `• 预计落字：${plan.totalPlaced} 字\n` +
+    `• 涉及页面：${plan.pages.length} 页` +
+    (plan.newPagesCount > 0 ? `（新增 ${plan.newPagesCount} 页）` : "") +
+    `\n• 跳过缺字：${plan.totalMissing} 种\n` +
+    `• 库存不足：${plan.totalShortage} 种\n\n` +
+    `此操作可通过撤销按钮完整撤回。`;
+
+  if (!confirm(confirmMsg)) return;
 
   pushHistory();
 
-  const currentPage = getCurrentPage();
-  const { text, direction, mode, layoutInfo } = tlPlan;
-  const usage = getUsage();
+  const existingPagesCount = state.pages.length;
 
-  const charAssign = [];
-  const usedTypeIds = {};
+  for (let i = 0; i < plan.pages.length; i += 1) {
+    const pagePlan = plan.pages[i];
 
-  for (const ch of text) {
-    const matchingTypes = state.inventory.filter((item) => item.char === ch);
-    if (matchingTypes.length === 0) {
-      charAssign.push(null);
-      continue;
+    if (pagePlan.isNew) {
+      const newIndex = state.pages.length + 1;
+      const newPage = {
+        id: crypto.randomUUID(),
+        name: `第${newIndex}页`,
+        settings: { ...state.pages[state.pages.length - 1]?.settings || { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 } },
+        placements: [],
+        activeTemplateId: state.pages[state.pages.length - 1]?.activeTemplateId || null
+      };
+      state.pages.push(newPage);
     }
-    const sorted = [...matchingTypes].sort((a, b) => {
-      const availA = a.quantity - (usage[a.id] || 0) - (usedTypeIds[a.id] || 0);
-      const availB = b.quantity - (usage[b.id] || 0) - (usedTypeIds[b.id] || 0);
-      return availB - availA;
-    });
-    const best = sorted[0];
-    const currentUsed = (usage[best.id] || 0) + (usedTypeIds[best.id] || 0);
-    if (currentUsed >= best.quantity) {
-      charAssign.push(null);
-      continue;
-    }
-    usedTypeIds[best.id] = (usedTypeIds[best.id] || 0) + 1;
-    charAssign.push(best.id);
   }
 
-  const cells = layoutInfo ? layoutInfo.cells : getAvailableCellsForLayout(mode, direction).cells;
+  let pageIdx = 0;
+  for (const pagePlan of plan.pages) {
+    let targetPage;
 
-  let cellIdx = 0;
-  for (let i = 0; i < charAssign.length; i += 1) {
-    if (charAssign[i] === null) continue;
-    if (cellIdx >= cells.length) break;
-    const cell = cells[cellIdx];
-    currentPage.placements.push({ row: cell.row, col: cell.col, typeId: charAssign[i] });
-    cellIdx += 1;
+    if (pagePlan.isNew) {
+      const newPagesBefore = plan.pages.slice(0, pageIdx).filter(p => p.isNew).length;
+      const targetIndex = existingPagesCount + newPagesBefore;
+      targetPage = state.pages[targetIndex];
+    } else {
+      targetPage = state.pages[pagePlan.pageIndex];
+    }
+
+    if (targetPage) {
+      for (const placement of pagePlan.placements) {
+        targetPage.placements.push({
+          row: placement.row,
+          col: placement.col,
+          typeId: placement.typeId
+        });
+      }
+    }
+
+    pageIdx += 1;
+  }
+
+  const lastPageIndex = plan.pages.length - 1;
+  const lastPlan = plan.pages[lastPageIndex];
+  if (lastPlan) {
+    if (lastPlan.isNew) {
+      const newPagesBefore = plan.pages.filter(p => p.isNew).length - 1;
+      state.currentPageId = state.pages[existingPagesCount + newPagesBefore].id;
+    } else {
+      state.currentPageId = state.pages[lastPlan.pageIndex].id;
+    }
   }
 
   closeTextLayoutModal();
+  clearSelection();
   renderAll();
+
+  setTimeout(() => {
+    alert(`排版完成！\n\n已写入 ${plan.totalPlaced} 字，分布在 ${plan.pages.length} 页上。\n如有需要，可点击撤销按钮撤回全部操作。`);
+  }, 100);
+}
+
+function getPageAvailableCells(page, direction) {
+  const { cols, rows } = getGrid(page.settings.paperSize);
+  const occupied = new Set(page.placements.map((p) => placementKey(p.row, p.col)));
+  const emptyCells = [];
+
+  if (direction === "horizontal") {
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, page)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  } else {
+    for (let col = 0; col < cols; col += 1) {
+      for (let row = 0; row < rows; row += 1) {
+        if (!occupied.has(placementKey(row, col)) && isTemplateCell(row, col, page)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  }
+
+  return emptyCells;
+}
+
+function getPageAvailableCellsFromStart(page, direction, startCell) {
+  const { cols, rows } = getGrid(page.settings.paperSize);
+  const occupied = new Set(page.placements.map((p) => placementKey(p.row, p.col)));
+  const emptyCells = [];
+  const visited = new Set();
+
+  if (direction === "horizontal") {
+    for (let row = startCell.row; row < rows; row += 1) {
+      const startCol = (row === startCell.row) ? startCell.col : 0;
+      for (let col = startCol; col < cols; col += 1) {
+        const key = placementKey(row, col);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!occupied.has(key) && isTemplateCell(row, col, page)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  } else {
+    for (let col = startCell.col; col < cols; col += 1) {
+      const startRow = (col === startCell.col) ? startCell.row : 0;
+      for (let row = startRow; row < rows; row += 1) {
+        const key = placementKey(row, col);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!occupied.has(key) && isTemplateCell(row, col, page)) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+  }
+
+  return emptyCells;
+}
+
+function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell = null) {
+  const totalUsage = getTotalUsage();
+  const usedTypeIds = { ...totalUsage };
+  const charCount = {};
+
+  for (const ch of text) {
+    if (ch.trim()) {
+      charCount[ch] = (charCount[ch] || 0) + 1;
+    }
+  }
+
+  const pagesPlan = [];
+  const missingChars = new Set();
+  const inventoryShortages = {};
+  const charAllocations = {};
+
+  let charIndex = 0;
+  let currentPageIdx = startPageIndex;
+  let remainingCells = [];
+  let pagesExtended = 0;
+  const maxExtraPages = 50;
+
+  const getOrCreatePage = (idx) => {
+    if (idx < state.pages.length) {
+      return state.pages[idx];
+    }
+    const newIdx = state.pages.length + pagesExtended + 1;
+    pagesExtended += 1;
+    const newPage = {
+      id: `preview-${crypto.randomUUID()}`,
+      name: `第${newIdx}页（预排）`,
+      settings: { ...state.pages[state.pages.length - 1]?.settings || { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 } },
+      placements: [],
+      activeTemplateId: state.pages[state.pages.length - 1]?.activeTemplateId || null,
+      _isNew: true
+    };
+    return newPage;
+  };
+
+  const initRemainingCells = () => {
+    const page = getOrCreatePage(currentPageIdx);
+    if (mode === "fromSelection" && currentPageIdx === startPageIndex && startCell) {
+      remainingCells = getPageAvailableCellsFromStart(page, direction, startCell);
+    } else {
+      remainingCells = getPageAvailableCells(page, direction);
+    }
+  };
+
+  initRemainingCells();
+
+  const charAssignments = [];
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (!ch.trim()) {
+      charAssignments.push({ char: ch, typeId: null, status: "whitespace" });
+      continue;
+    }
+
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) {
+      missingChars.add(ch);
+      charAssignments.push({ char: ch, typeId: null, status: "missing" });
+      continue;
+    }
+
+    const sorted = [...matchingTypes].sort((a, b) => {
+      const availA = a.quantity - (usedTypeIds[a.id] || 0);
+      const availB = b.quantity - (usedTypeIds[b.id] || 0);
+      return availB - availA;
+    });
+
+    let assigned = null;
+    for (const type of sorted) {
+      const currentUsed = usedTypeIds[type.id] || 0;
+      if (currentUsed < type.quantity) {
+        assigned = type;
+        break;
+      }
+    }
+
+    if (!assigned) {
+      if (!inventoryShortages[ch]) {
+        inventoryShortages[ch] = { char: ch, needed: 0, available: 0, styles: [] };
+      }
+      inventoryShortages[ch].needed += 1;
+      if (inventoryShortages[ch].available === 0) {
+        inventoryShortages[ch].available = matchingTypes.reduce((sum, t) => sum + t.quantity, 0);
+        inventoryShortages[ch].styles = matchingTypes.map(t => t.style);
+      }
+      charAssignments.push({ char: ch, typeId: null, status: "shortage" });
+      continue;
+    }
+
+    usedTypeIds[assigned.id] = (usedTypeIds[assigned.id] || 0) + 1;
+    charAssignments.push({ char: ch, typeId: assigned.id, style: assigned.style, status: "ok" });
+
+    if (!charAllocations[ch]) {
+      charAllocations[ch] = [];
+    }
+    const existingAlloc = charAllocations[ch].find(a => a.typeId === assigned.id);
+    if (existingAlloc) {
+      existingAlloc.count += 1;
+    } else {
+      charAllocations[ch].push({
+        typeId: assigned.id,
+        char: assigned.char,
+        style: assigned.style,
+        count: 1,
+        quantity: assigned.quantity
+      });
+    }
+  }
+
+  let cellIdx = 0;
+  let pagePlacements = [];
+  let pageMissingCount = 0;
+  let pageShortageCount = 0;
+
+  const finalizePage = () => {
+    const page = getOrCreatePage(currentPageIdx);
+    pagesPlan.push({
+      pageIndex: currentPageIdx,
+      pageId: page.id,
+      pageName: page.name,
+      isNew: !!page._isNew,
+      placements: pagePlacements,
+      placementCount: pagePlacements.length,
+      missingCount: pageMissingCount,
+      shortageCount: pageShortageCount,
+      paperSize: page.settings.paperSize
+    });
+  };
+
+  for (let i = 0; i < charAssignments.length; i += 1) {
+    const assignment = charAssignments[i];
+
+    if (assignment.status === "missing") {
+      pageMissingCount += 1;
+      continue;
+    }
+    if (assignment.status === "shortage") {
+      pageShortageCount += 1;
+      continue;
+    }
+    if (assignment.status === "whitespace") {
+      continue;
+    }
+
+    if (cellIdx >= remainingCells.length) {
+      finalizePage();
+      currentPageIdx += 1;
+
+      if (currentPageIdx >= state.pages.length + pagesExtended && pagesExtended >= maxExtraPages) {
+        break;
+      }
+
+      pagePlacements = [];
+      pageMissingCount = 0;
+      pageShortageCount = 0;
+      cellIdx = 0;
+      initRemainingCells();
+
+      if (remainingCells.length === 0) {
+        break;
+      }
+    }
+
+    const cell = remainingCells[cellIdx];
+    pagePlacements.push({
+      row: cell.row,
+      col: cell.col,
+      typeId: assignment.typeId,
+      char: assignment.char,
+      style: assignment.style
+    });
+    cellIdx += 1;
+  }
+
+  if (pagePlacements.length > 0 || pageMissingCount > 0 || pageShortageCount > 0) {
+    finalizePage();
+  }
+
+  const totalPlaceableChars = charAssignments.filter(a => a.status === "ok").length;
+  const totalMissing = missingChars.size;
+  const totalShortage = Object.keys(inventoryShortages).length;
+  const totalPlaced = pagesPlan.reduce((sum, p) => sum + p.placementCount, 0);
+  const newPagesCount = pagesPlan.filter(p => p.isNew).length;
+
+  const perCharResults = [];
+  for (const [ch, needed] of Object.entries(charCount)) {
+    const matchingTypes = state.inventory.filter((item) => item.char === ch);
+    if (matchingTypes.length === 0) {
+      perCharResults.push({ char: ch, needed, status: "missing", allocations: [], totalAvailable: 0 });
+      continue;
+    }
+    const totalAvailable = matchingTypes.reduce((sum, t) => sum + t.quantity, 0);
+    const allocations = charAllocations[ch] || [];
+    const allocatedCount = allocations.reduce((sum, a) => sum + a.count, 0);
+    const status = allocatedCount >= needed ? "ok" : "low";
+    perCharResults.push({ char: ch, needed, status, allocations, totalAvailable });
+  }
+
+  return {
+    text,
+    direction,
+    mode,
+    startPageIndex,
+    startCell,
+    pages: pagesPlan,
+    totalChars: text.length,
+    totalEffectiveChars: Object.values(charCount).reduce((s, n) => s + n, 0),
+    totalPlaceableChars,
+    totalPlaced,
+    totalMissing,
+    totalShortage,
+    newPagesCount,
+    missingChars: Array.from(missingChars).sort(),
+    inventoryShortages: Object.values(inventoryShortages),
+    perCharResults,
+    usedTypeIds
+  };
 }
 
 function renderAll() {
@@ -4823,7 +5319,7 @@ els.tlConfirm.addEventListener("click", confirmTextLayout);
 document.querySelectorAll('input[name="tlMode"]').forEach((radio) => {
   radio.addEventListener("change", () => {
     updateSelectionHint();
-    if (!els.tlAnalysis.hidden) {
+    if (smartLayoutPlan) {
       analyzeText();
     }
   });
@@ -4831,8 +5327,17 @@ document.querySelectorAll('input[name="tlMode"]').forEach((radio) => {
 
 document.querySelectorAll('input[name="tlDir"]').forEach((radio) => {
   radio.addEventListener("change", () => {
-    if (!els.tlAnalysis.hidden) {
+    if (smartLayoutPlan) {
       analyzeText();
+    }
+  });
+});
+
+document.querySelectorAll(".sl-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const tabName = tab.dataset.slTab;
+    if (tabName) {
+      switchSlpTab(tabName);
     }
   });
 });

@@ -245,39 +245,95 @@
       </div>
     </div>
 
-    <div id="textLayoutModal" class="modal-overlay" hidden>
+    <div id="textLayoutModal" class="modal-overlay smart-layout-modal" hidden>
       <div class="modal">
         <div class="modal-head">
-          <h2>文本落版助手</h2>
+          <h2>智能排版预演</h2>
           <button id="tlClose" class="mini-btn" type="button">×</button>
         </div>
         <div class="modal-body">
-          <label class="tl-input-label">
-            输入短句
-            <textarea id="tlText" rows="3" placeholder="例：山月风花茶雨"></textarea>
-          </label>
-          <div class="tl-mode">
-            <span>落版模式</span>
-            <label class="tl-radio"><input type="radio" name="tlMode" value="fillPage" checked />整页填充</label>
-            <label class="tl-radio"><input type="radio" name="tlMode" value="fromSelection" />从选中格开始</label>
+          <div class="sl-input-section">
+            <label class="sl-input-label">
+              输入文本
+              <textarea id="tlText" rows="5" placeholder="请输入要排版的文本，支持长文本跨页自动续排..."></textarea>
+            </label>
+            <div class="sl-options">
+              <div class="sl-option-group">
+                <span class="sl-option-label">落版模式</span>
+                <div class="sl-radio-group">
+                  <label class="sl-radio"><input type="radio" name="tlMode" value="fillPage" checked />从当前页开始</label>
+                  <label class="sl-radio"><input type="radio" name="tlMode" value="fromSelection" />从选中格开始</label>
+                </div>
+              </div>
+              <div class="sl-option-group">
+                <span class="sl-option-label">排版方向</span>
+                <div class="sl-radio-group">
+                  <label class="sl-radio"><input type="radio" name="tlDir" value="horizontal" checked />横向从左到右</label>
+                  <label class="sl-radio"><input type="radio" name="tlDir" value="vertical" />纵向从上到下</label>
+                </div>
+              </div>
+            </div>
+            <div id="tlSelectionHint" class="tl-selection-hint" hidden>
+              <span id="tlSelectionInfo"></span>
+            </div>
+            <button id="tlAnalyze" class="primary sl-analyze-btn" type="button">📊 生成预演方案</button>
           </div>
-          <div id="tlSelectionHint" class="tl-selection-hint" hidden>
-            <span id="tlSelectionInfo"></span>
-          </div>
-          <div class="tl-direction">
-            <span>填入方向</span>
-            <label class="tl-radio"><input type="radio" name="tlDir" value="horizontal" checked />从左到右</label>
-            <label class="tl-radio"><input type="radio" name="tlDir" value="vertical" />从上到下</label>
-          </div>
-          <button id="tlAnalyze" class="primary" type="button">分析字模</button>
-          <div id="tlAnalysis" class="tl-analysis" hidden>
-            <h3>字模分析</h3>
-            <div id="tlAnalysisContent" class="tl-analysis-content"></div>
+
+          <div id="slPreview" class="sl-preview" hidden>
+            <div class="sl-summary-bar">
+              <div class="sl-summary-item">
+                <span class="sl-summary-label">输入字数</span>
+                <span class="sl-summary-value" id="slTotalChars">0</span>
+              </div>
+              <div class="sl-summary-item">
+                <span class="sl-summary-label">预计落字</span>
+                <span class="sl-summary-value sl-value-ok" id="slPlacedChars">0</span>
+              </div>
+              <div class="sl-summary-item">
+                <span class="sl-summary-label">缺字</span>
+                <span class="sl-summary-value sl-value-missing" id="slMissingChars">0</span>
+              </div>
+              <div class="sl-summary-item">
+                <span class="sl-summary-label">库存不足</span>
+                <span class="sl-summary-value sl-value-shortage" id="slShortageChars">0</span>
+              </div>
+              <div class="sl-summary-item">
+                <span class="sl-summary-label">涉及页数</span>
+                <span class="sl-summary-value sl-value-pages" id="slPagesCount">0</span>
+              </div>
+              <div class="sl-summary-item sl-new-pages" id="slNewPagesBadge" hidden>
+                <span class="sl-summary-label">新增页数</span>
+                <span class="sl-summary-value" id="slNewPagesCount">0</span>
+              </div>
+            </div>
+
+            <div class="sl-tabs">
+              <button class="sl-tab active" data-sl-tab="pages" type="button">📄 页面预排</button>
+              <button class="sl-tab" data-sl-tab="missing" type="button">❓ 缺字列表</button>
+              <button class="sl-tab" data-sl-tab="shortage" type="button">⚠️ 库存风险</button>
+              <button class="sl-tab" data-sl-tab="allocation" type="button">📋 字模分配</button>
+            </div>
+
+            <div class="sl-tab-content" data-sl-tab-content="pages">
+              <div id="slPagesList" class="sl-pages-list"></div>
+            </div>
+
+            <div class="sl-tab-content" data-sl-tab-content="missing" hidden>
+              <div id="slMissingList" class="sl-missing-list"></div>
+            </div>
+
+            <div class="sl-tab-content" data-sl-tab-content="shortage" hidden>
+              <div id="slShortageList" class="sl-shortage-list"></div>
+            </div>
+
+            <div class="sl-tab-content" data-sl-tab-content="allocation" hidden>
+              <div id="slAllocationList" class="sl-allocation-list"></div>
+            </div>
           </div>
         </div>
         <div class="modal-foot">
           <button id="tlCancel" type="button">取消</button>
-          <button id="tlConfirm" class="primary" type="button" disabled>确认落版</button>
+          <button id="tlConfirm" class="primary" type="button" disabled>✓ 确认写入版面</button>
         </div>
       </div>
     </div>
