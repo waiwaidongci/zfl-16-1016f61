@@ -1741,7 +1741,12 @@ const els = {
   templateApplyConfirmContent: document.querySelector("#templateApplyConfirmContent"),
   templateApplyConfirmClose: document.querySelector("#templateApplyConfirmClose"),
   templateApplyConfirmCancel: document.querySelector("#templateApplyConfirmCancel"),
-  templateApplyConfirmOk: document.querySelector("#templateApplyConfirmOk")
+  templateApplyConfirmOk: document.querySelector("#templateApplyConfirmOk"),
+  testRunner: document.querySelector("#testRunner"),
+  testRunnerClose: document.querySelector("#testRunnerClose"),
+  runTestsBtn: document.querySelector("#runTestsBtn"),
+  testSummary: document.querySelector("#testSummary"),
+  testResults: document.querySelector("#testResults")
 };
 
 function loadState() {
@@ -6101,3 +6106,347 @@ document.addEventListener("keydown", (e) => {
 });
 
 renderAll();
+
+(function initTestRunner() {
+  const shouldShowTests = new URLSearchParams(window.location.search).get("test") === "1";
+  if (!shouldShowTests || !els.testRunner) return;
+
+  els.testRunner.hidden = false;
+
+  const testCases = [];
+  function registerTest(name, fn) {
+    testCases.push({ name, fn, status: "pending", asserts: [], error: null });
+  }
+
+  function createAssert(ctx) {
+    return {
+      equal(actual, expected, msg) {
+        const pass = actual === expected;
+        ctx.asserts.push({
+          pass,
+          msg: msg || `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+        });
+        if (!pass) throw new Error(msg || `Assertion failed: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+      },
+      deepEqual(actual, expected, msg) {
+        const pass = JSON.stringify(actual) === JSON.stringify(expected);
+        ctx.asserts.push({
+          pass,
+          msg: msg || `expected deep equal`
+        });
+        if (!pass) throw new Error(msg || `Assertion failed: deep equal`);
+      },
+      true(cond, msg) {
+        const pass = !!cond;
+        ctx.asserts.push({ pass, msg: msg || `expected truthy, got ${JSON.stringify(cond)}` });
+        if (!pass) throw new Error(msg || `Assertion failed: expected truthy`);
+      },
+      false(cond, msg) {
+        const pass = !cond;
+        ctx.asserts.push({ pass, msg: msg || `expected falsy, got ${JSON.stringify(cond)}` });
+        if (!pass) throw new Error(msg || `Assertion failed: expected falsy`);
+      },
+      includes(arr, item, msg) {
+        const pass = Array.isArray(arr) && arr.includes(item);
+        ctx.asserts.push({ pass, msg: msg || `expected array to include item` });
+        if (!pass) throw new Error(msg || `Assertion failed: array does not include item`);
+      },
+      gt(a, b, msg) {
+        const pass = a > b;
+        ctx.asserts.push({ pass, msg: msg || `expected ${a} > ${b}` });
+        if (!pass) throw new Error(msg || `Assertion failed: ${a} <= ${b}`);
+      }
+    };
+  }
+
+  function snapshotState() {
+    return {
+      state: deepCloneState(state),
+      historyStack: historyStack.map(deepCloneState),
+      redoStack: redoStack.map(deepCloneState),
+      pendingImport: pendingImport ? JSON.parse(JSON.stringify(pendingImport, (k, v) => k === "validItems" ? v.map(i => ({ ...i })) : v)) : null
+    };
+  }
+
+  function restoreState(snap) {
+    state = deepCloneState(snap.state);
+    historyStack = snap.historyStack.map(deepCloneState);
+    redoStack = snap.redoStack.map(deepCloneState);
+    pendingImport = snap.pendingImport;
+    updateHistoryButtons();
+  }
+
+  function buildExportPayload(items) {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      count: items.length,
+      inventory: items.map(i => ({
+        char: i.char,
+        style: i.style,
+        size: i.size,
+        quantity: i.quantity,
+        wear: i.wear
+      }))
+    };
+  }
+
+  function signatureSet(inv) {
+    return new Set(inv.map(itemSignature));
+  }
+
+  function renderTestResults() {
+    let passCount = 0;
+    let failCount = 0;
+    let html = "";
+
+    testCases.forEach((tc, idx) => {
+      if (tc.status === "pass") passCount++;
+      if (tc.status === "fail") failCount++;
+
+      const statusLabel = tc.status === "pending" ? "待运行" : tc.status === "pass" ? "通过" : "失败";
+      const assertsHtml = tc.asserts.map(a =>
+        `<div class="test-assert ${a.pass ? "pass" : "fail"}"><span class="assert-msg">${escapeHtml(a.msg)}</span></div>`
+      ).join("");
+      const errorHtml = tc.error ? `<div class="test-error">${escapeHtml(tc.error.message || String(tc.error))}</div>` : "";
+
+      html += `
+        <div class="test-case" data-idx="${idx}">
+          <div class="test-case-head">
+            <span class="test-case-name">${escapeHtml(tc.name)}</span>
+            <span class="test-case-status ${tc.status}">${statusLabel}</span>
+          </div>
+          <div class="test-case-body" hidden>
+            ${assertsHtml}
+            ${errorHtml}
+          </div>
+        </div>
+      `;
+    });
+
+    els.testResults.innerHTML = html;
+    els.testResults.querySelectorAll(".test-case-head").forEach((head) => {
+      head.addEventListener("click", () => {
+        const body = head.nextElementSibling;
+        if (body) body.hidden = !body.hidden;
+      });
+    });
+
+    if (passCount + failCount > 0) {
+      const total = testCases.length;
+      els.testSummary.textContent = `${passCount}/${total} 通过，${failCount} 失败`;
+      els.testSummary.className = "test-summary " + (failCount === 0 ? "pass" : "fail");
+    } else {
+      els.testSummary.textContent = `共 ${testCases.length} 个测试`;
+      els.testSummary.className = "test-summary";
+    }
+  }
+
+  async function runAllTests() {
+    for (const tc of testCases) {
+      tc.status = "pending";
+      tc.asserts = [];
+      tc.error = null;
+    }
+    renderTestResults();
+
+    for (const tc of testCases) {
+      const snap = snapshotState();
+      const ctx = { asserts: tc.asserts };
+      const assert = createAssert(ctx);
+      try {
+        await tc.fn(assert);
+        tc.status = "pass";
+      } catch (e) {
+        tc.status = "fail";
+        tc.error = e;
+      } finally {
+        restoreState(snap);
+        saveState();
+        renderAll();
+        renderTestResults();
+      }
+    }
+  }
+
+  // ========= 测试用例 1：导出格式回读 =========
+  registerTest("1. 导出格式回读：导出→再导入，数据一致性", async (assert) => {
+    const seedItems = [
+      { char: "春", style: "宋体旧字", size: 28, quantity: 5, wear: "新" },
+      { char: "夏", style: "楷体木刻", size: 24, quantity: 3, wear: "微磨" },
+      { char: "秋", style: "黑体铅字", size: 32, quantity: 2, wear: "旧痕" }
+    ];
+
+    const payload = buildExportPayload(seedItems);
+    assert.equal(payload.version, 1, "导出payload.version === 1");
+    assert.equal(payload.count, 3, "导出count === 3");
+    assert.equal(payload.inventory.length, 3, "导出inventory数组长度正确");
+    assert.true(typeof payload.exportedAt === "string", "exportedAt字段存在");
+
+    processImportData(payload, "字模库_test.json");
+    assert.true(pendingImport !== null, "pendingImport被设置");
+    assert.equal(pendingImport.validItems.length, 3, "3条均为有效条目");
+    assert.equal(pendingImport.allErrors.length, 0, "无校验错误");
+
+    const exportedSigs = new Set(seedItems.map(itemSignature));
+    const importedSigs = new Set(pendingImport.validItems.map(itemSignature));
+    assert.equal(importedSigs.size, exportedSigs.size, "签名集合大小一致");
+    for (const s of exportedSigs) assert.true(importedSigs.has(s), `导入后存在签名 ${s}`);
+
+    pendingImport.validItems.forEach((it) => {
+      assert.true(typeof it.id === "string" && it.id.length > 0, "每个导入条目分配了id");
+    });
+  });
+
+  // ========= 测试用例 2：数组格式导入 =========
+  registerTest("2. 数组格式导入：直接传数组而非带inventory字段的对象", async (assert) => {
+    const rawArray = [
+      { char: "甲", style: "宋体旧字", size: 26, quantity: 4, wear: "新" },
+      { char: "乙", style: "楷体木刻", size: 22, quantity: 2, wear: "微磨" }
+    ];
+
+    processImportData(rawArray, "array_format.json");
+    assert.true(pendingImport !== null, "数组格式也能触发pendingImport");
+    assert.equal(pendingImport.validItems.length, 2, "数组格式两条均有效");
+    assert.equal(pendingImport.allErrors.length, 0, "数组格式无校验错误");
+    assert.equal(pendingImport.validItems[0].char, "甲", "第一条内容正确：甲");
+    assert.equal(pendingImport.validItems[1].char, "乙", "第二条内容正确：乙");
+  });
+
+  // ========= 测试用例 3：非法字段被跳过 =========
+  registerTest("3. 非法char/size/quantity/wear被正确跳过", async (assert) => {
+    const mixed = [
+      { char: "好", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { char: "", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { char: "太长超过两字", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { char: "字", style: "", size: 24, quantity: 3, wear: "新" },
+      { char: "字", style: "风格", size: 7, quantity: 3, wear: "新" },
+      { char: "字", style: "风格", size: 100, quantity: 3, wear: "新" },
+      { char: "字", style: "风格", size: 24.5, quantity: 3, wear: "新" },
+      { char: "字", style: "风格", size: 24, quantity: 0, wear: "新" },
+      { char: "字", style: "风格", size: 24, quantity: 100, wear: "新" },
+      { char: "字", style: "风格", size: 24, quantity: 1.5, wear: "新" },
+      { char: "字", style: "风格", size: 24, quantity: 3, wear: "完美" },
+      { char: "字", style: "风格", size: 24, quantity: 3, wear: null },
+      "not an object",
+      null,
+      { char: "正", style: "楷体木刻", size: 28, quantity: 5, wear: "旧痕" }
+    ];
+
+    processImportData(mixed, "mixed_invalid.json");
+    assert.true(pendingImport !== null, "处理完成");
+    assert.equal(pendingImport.validItems.length, 2, "仅2条合法条目被保留");
+    assert.gt(pendingImport.allErrors.length, 0, "产生了校验错误");
+    assert.equal(pendingImport.validItems[0].char, "好", "合法条目1：好");
+    assert.equal(pendingImport.validItems[1].char, "正", "合法条目2：正");
+
+    const errText = pendingImport.allErrors.join("|");
+    assert.true(errText.includes("字"), "错误信息包含「字」字段提示");
+    assert.true(errText.includes("字号"), "错误信息包含「字号」字段提示");
+    assert.true(errText.includes("数量"), "错误信息包含「数量」字段提示");
+    assert.true(errText.includes("磨损状态"), "错误信息包含「磨损状态」字段提示");
+  });
+
+  // ========= 测试用例 4：合并模式去重 =========
+  registerTest("4. 合并模式去重：与现有重复、导入内部重复均被跳过", async (assert) => {
+    state.inventory = [
+      { id: crypto.randomUUID(), char: "天", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { id: crypto.randomUUID(), char: "地", style: "楷体木刻", size: 28, quantity: 2, wear: "微磨" }
+    ];
+    state.selectedTypeId = state.inventory[0].id;
+    const beforeCount = state.inventory.length;
+    const beforeSigs = signatureSet(state.inventory);
+
+    const importData = [
+      { char: "天", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { char: "天", style: "宋体旧字", size: 24, quantity: 3, wear: "新" },
+      { char: "人", style: "黑体铅字", size: 26, quantity: 4, wear: "旧痕" },
+      { char: "人", style: "黑体铅字", size: 26, quantity: 4, wear: "旧痕" },
+      { char: "和", style: "仿宋细字", size: 22, quantity: 2, wear: "新" }
+    ];
+
+    processImportData(importData, "dedup_test.json");
+    assert.equal(pendingImport.validItems.length, 5, "5条数据本身都合法");
+    assert.equal(pendingImport.newUniqueCount, 2, "真正新增的只有2条（人、和）");
+    assert.equal(pendingImport.duplicateCount, 3, "3条被识别为重复（1条现有重复 + 2条内部重复）");
+
+    const savedModeRadio = document.querySelector('input[name="importMode"][value="merge"]');
+    const savedChecked = savedModeRadio.checked;
+    savedModeRadio.checked = true;
+    try {
+      confirmImport();
+    } finally {
+      savedModeRadio.checked = savedChecked;
+    }
+
+    assert.equal(state.inventory.length, beforeCount + 2, "合并后仅净增2条");
+    const afterSigs = signatureSet(state.inventory);
+    for (const s of beforeSigs) assert.true(afterSigs.has(s), `原有签名 ${s} 仍然存在`);
+    assert.true(afterSigs.has(itemSignature({ char: "人", style: "黑体铅字", size: 26, quantity: 4, wear: "旧痕" })), "新增「人」存在");
+    assert.true(afterSigs.has(itemSignature({ char: "和", style: "仿宋细字", size: 22, quantity: 2, wear: "新" })), "新增「和」存在");
+  });
+
+  // ========= 测试用例 5：覆盖模式清空版面落字 =========
+  registerTest("5. 覆盖模式：清空版面落字 + 替换字模库", async (assert) => {
+    state.inventory = [
+      { id: crypto.randomUUID(), char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }
+    ];
+    state.selectedTypeId = state.inventory[0].id;
+    const pageA = createDefaultPage("页A");
+    const pageB = createDefaultPage("页B");
+    pageA.placements = [
+      { typeId: state.inventory[0].id, row: 0, col: 0 },
+      { typeId: state.inventory[0].id, row: 0, col: 1 }
+    ];
+    pageB.placements = [
+      { typeId: state.inventory[0].id, row: 1, col: 0 }
+    ];
+    state.pages = [pageA, pageB];
+    state.currentPageId = pageA.id;
+
+    const overwriteData = [
+      { char: "新", style: "黑体铅字", size: 30, quantity: 5, wear: "微磨" },
+      { char: "来", style: "楷体木刻", size: 28, quantity: 2, wear: "新" }
+    ];
+
+    processImportData(overwriteData, "overwrite_test.json");
+    assert.equal(pendingImport.validItems.length, 2, "覆盖导入：2条有效");
+
+    const savedModeRadio = document.querySelector('input[name="importMode"][value="overwrite"]');
+    const savedChecked = savedModeRadio.checked;
+    const mergeRadio = document.querySelector('input[name="importMode"][value="merge"]');
+    const mergeWasChecked = mergeRadio.checked;
+    mergeRadio.checked = false;
+    savedModeRadio.checked = true;
+    try {
+      confirmImport();
+    } finally {
+      savedModeRadio.checked = savedChecked;
+      mergeRadio.checked = mergeWasChecked;
+    }
+
+    assert.equal(state.inventory.length, 2, "覆盖后字模库仅含导入的2条");
+    const overwriteSigs = signatureSet(state.inventory);
+    assert.true(overwriteSigs.has(itemSignature({ char: "新", style: "黑体铅字", size: 30, quantity: 5, wear: "微磨" })), "覆盖后存在「新」");
+    assert.true(overwriteSigs.has(itemSignature({ char: "来", style: "楷体木刻", size: 28, quantity: 2, wear: "新" })), "覆盖后存在「来」");
+    assert.false(overwriteSigs.has(itemSignature({ char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" })), "覆盖后「旧」被移除");
+
+    state.pages.forEach((p, i) => {
+      assert.equal(p.placements.length, 0, `覆盖模式：第${i + 1}页(${p.name}) placements被清空`);
+    });
+
+    if (state.inventory.length > 0) {
+      assert.true(state.inventory.some(i => i.id === state.selectedTypeId), "覆盖后selectedTypeId指向新字模之一");
+    }
+  });
+
+  // ========= 初始化UI =========
+  els.testRunnerClose.addEventListener("click", () => {
+    els.testRunner.hidden = true;
+  });
+  els.runTestsBtn.addEventListener("click", () => {
+    runAllTests();
+  });
+
+  renderTestResults();
+})();

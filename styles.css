@@ -3566,3 +3566,155 @@ h3 {
     padding: 6px 8px;
   }
 }
+
+.test-runner {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 560px;
+  max-height: 70vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.test-runner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, var(--blue), #4a7fa0);
+  color: #fff;
+}
+
+.test-runner-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.test-runner-head .mini-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 2px 8px;
+}
+
+.test-runner-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+.test-runner-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.test-summary {
+  font-weight: 600;
+}
+
+.test-summary.pass {
+  color: var(--green);
+}
+
+.test-summary.fail {
+  color: var(--red);
+}
+
+.test-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-case {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.test-case-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #fffdf8;
+  cursor: pointer;
+}
+
+.test-case-head:hover {
+  background: #f7f0e3;
+}
+
+.test-case-name {
+  font-weight: 600;
+}
+
+.test-case-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.test-case-status.pending {
+  background: #eee;
+  color: #666;
+}
+
+.test-case-status.pass {
+  background: rgba(60, 112, 86, 0.12);
+  color: var(--green);
+}
+
+.test-case-status.fail {
+  background: rgba(166, 64, 55, 0.12);
+  color: var(--red);
+}
+
+.test-case-body {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.test-assert {
+  padding: 2px 0;
+}
+
+.test-assert.pass::before {
+  content: "✓ ";
+  color: var(--green);
+}
+
+.test-assert.fail::before {
+  content: "✗ ";
+  color: var(--red);
+}
+
+.test-assert .assert-msg {
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.test-error {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(166, 64, 55, 0.06);
+  border-left: 3px solid var(--red);
+  color: var(--red);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
