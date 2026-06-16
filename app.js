@@ -3983,10 +3983,6 @@ let selectionDragState = {
 els.stage.addEventListener("mousedown", (event) => {
   if (event.button !== 0) return;
 
-  if (selectionState.isMoveMode || selectionState.isPasteMode) {
-    return;
-  }
-
   const cellInfo = getCellFromPoint(event.clientX, event.clientY);
   if (!cellInfo) return;
 
@@ -3996,6 +3992,10 @@ els.stage.addEventListener("mousedown", (event) => {
   selectionDragState.startCell = cellInfo;
   selectionDragState.additive = event.shiftKey;
   selectionDragState.moved = false;
+
+  if (selectionState.isMoveMode || selectionState.isPasteMode) {
+    return;
+  }
 
   if (!event.shiftKey) {
     selectionState.selectedCells.clear();
@@ -4016,6 +4016,10 @@ document.addEventListener("mousemove", (event) => {
         selectionState.pastePreviewCell = null;
       }
     }
+    return;
+  }
+
+  if (selectionState.isMoveMode || selectionState.isPasteMode) {
     return;
   }
 
