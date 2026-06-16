@@ -723,12 +723,15 @@ function getSelectionBounds() {
 
 function updateSelectionUI() {
   const count = selectionState.selectedCells.size;
+  const clipboardCount = selectionState.clipboard && selectionState.clipboard.placements
+    ? selectionState.clipboard.placements.length
+    : 0;
   if (els.selectionToolbar) {
     els.selectionToolbar.hidden = count === 0 && !selectionState.isPasteMode;
   }
   if (els.selectionInfo) {
     if (selectionState.isPasteMode) {
-      els.selectionInfo.textContent = "粘贴模式：点击格子选择粘贴位置";
+      els.selectionInfo.textContent = `粘贴模式：剪贴板 ${clipboardCount} 个字，点击格子选择粘贴位置`;
     } else if (selectionState.isMoveMode) {
       els.selectionInfo.textContent = `移动模式：已选择 ${count} 个格子，点击目标位置移动`;
     } else {
@@ -833,26 +836,57 @@ function showPastePreview(row, col) {
 
   hidePastePreview();
 
-  const { placements } = selectionState.clipboard;
   const check = canPasteSelection(row, col);
+  const { pasteablePlacements, invalidPlacements } = check;
 
-  placements.forEach((p) => {
+  pasteablePlacements.forEach((p) => {
     const r = row + p.offsetRow;
     const c = col + p.offsetCol;
     const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
     if (cell) {
       cell.classList.add("paste-preview");
-      if (!check.ok) {
-        cell.classList.add("paste-preview-invalid");
+    }
+  });
+
+  invalidPlacements.forEach((p) => {
+    const r = row + p.offsetRow;
+    const c = col + p.offsetCol;
+    const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+    if (cell) {
+      cell.classList.add("paste-preview", "paste-preview-invalid");
+      if (p.reason === "templateBlocked") {
+        cell.classList.add("paste-preview-template-blocked");
       }
     }
   });
+
+  if (els.selectionInfo) {
+    if (check.ok) {
+      if (check.isPartial) {
+        const parts = [];
+        parts.push(`可粘贴 ${check.pasteableCount}/${check.totalCount} 个`);
+        if (check.outOfBoundsCount > 0) parts.push(`${check.outOfBoundsCount}个越界`);
+        if (check.templateBlockedCount > 0) parts.push(`${check.templateBlockedCount}个禁用格`);
+        if (check.overwrittenCount > 0) parts.push(`${check.overwrittenCount}个覆盖`);
+        els.selectionInfo.textContent = `粘贴模式：${parts.join("，")}`;
+      } else {
+        let info = `粘贴模式：可粘贴 ${check.pasteableCount} 个`;
+        if (check.overwrittenCount > 0) info += `（覆盖 ${check.overwrittenCount} 个）`;
+        els.selectionInfo.textContent = info;
+      }
+    } else {
+      els.selectionInfo.textContent = `粘贴模式：${check.reason}`;
+    }
+  }
 }
 
 function hidePastePreview() {
   document.querySelectorAll(".cell.paste-preview").forEach((cell) => {
-    cell.classList.remove("paste-preview", "paste-preview-invalid");
+    cell.classList.remove("paste-preview", "paste-preview-invalid", "paste-preview-template-blocked");
   });
+  if (els.selectionInfo && selectionState.isPasteMode) {
+    els.selectionInfo.textContent = "粘贴模式：点击格子选择粘贴位置";
+  }
 }
 
 function startPasteMode() {
@@ -902,37 +936,72 @@ function copySelection() {
 
 function canPasteSelection(targetRow, targetCol) {
   if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) {
-    return { ok: false, reason: "剪贴板为空" };
+    return { ok: false, reason: "剪贴板为空", totalCount: 0, pasteableCount: 0 };
   }
 
   const { cols, rows } = getGrid();
   const { placements, bounds } = selectionState.clipboard;
-
-  const outOfBounds = placements.some((p) => {
-    const r = targetRow + p.offsetRow;
-    const c = targetCol + p.offsetCol;
-    return r < 0 || r >= rows || c < 0 || c >= cols;
-  });
-
-  if (outOfBounds) {
-    return { ok: false, reason: "粘贴位置越界，部分字将落在版面外" };
-  }
-
   const currentPage = getCurrentPage();
   const existingMap = new Map(currentPage.placements.map((item) => [placementKey(item.row, item.col), item]));
-  const willOverwrite = placements.some((p) => {
+
+  let outOfBoundsCount = 0;
+  let templateBlockedCount = 0;
+  let overwrittenCount = 0;
+  const pasteablePlacements = [];
+  const invalidPlacements = [];
+
+  for (const p of placements) {
     const r = targetRow + p.offsetRow;
     const c = targetCol + p.offsetCol;
-    return existingMap.has(placementKey(r, c));
-  });
+    const key = placementKey(r, c);
+
+    const outOfBounds = r < 0 || r >= rows || c < 0 || c >= cols;
+    const templateBlocked = !outOfBounds && !isTemplateCell(r, c, currentPage);
+    const hasExisting = !outOfBounds && !templateBlocked && existingMap.has(key);
+
+    if (outOfBounds) {
+      outOfBoundsCount += 1;
+      invalidPlacements.push({ ...p, reason: "outOfBounds" });
+    } else if (templateBlocked) {
+      templateBlockedCount += 1;
+      invalidPlacements.push({ ...p, reason: "templateBlocked" });
+    } else {
+      pasteablePlacements.push(p);
+      if (hasExisting) {
+        overwrittenCount += 1;
+      }
+    }
+  }
+
+  const totalCount = placements.length;
+  const pasteableCount = pasteablePlacements.length;
+
+  if (pasteableCount === 0) {
+    let reason = "无法粘贴：";
+    const reasons = [];
+    if (outOfBoundsCount > 0) reasons.push(`${outOfBoundsCount}个位置越界`);
+    if (templateBlockedCount > 0) reasons.push(`${templateBlockedCount}个位置为模板禁用格`);
+    if (reasons.length > 0) reason += reasons.join("，");
+    return {
+      ok: false,
+      reason,
+      totalCount,
+      pasteableCount: 0,
+      outOfBoundsCount,
+      templateBlockedCount,
+      overwrittenCount,
+      pasteablePlacements: [],
+      invalidPlacements
+    };
+  }
 
   const usage = getUsage();
   const needed = {};
-  for (const p of placements) {
+  for (const p of pasteablePlacements) {
     needed[p.typeId] = (needed[p.typeId] || 0) + 1;
   }
 
-  const targetKeys = placements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
+  const targetKeys = pasteablePlacements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
   const existingInTarget = currentPage.placements.filter(
     (pl) => targetKeys.includes(placementKey(pl.row, pl.col))
   );
@@ -957,23 +1026,44 @@ function canPasteSelection(targetRow, targetCol) {
     return {
       ok: false,
       reason: "字模库存不足",
-      shortages
+      shortages,
+      totalCount,
+      pasteableCount,
+      outOfBoundsCount,
+      templateBlockedCount,
+      overwrittenCount,
+      pasteablePlacements,
+      invalidPlacements
     };
   }
 
+  const isPartial = pasteableCount < totalCount;
+
   return {
     ok: true,
-    willOverwrite,
-    overwrittenCount: placements.filter((p) => existingMap.has(placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol))).length
+    isPartial,
+    willOverwrite: overwrittenCount > 0,
+    totalCount,
+    pasteableCount,
+    outOfBoundsCount,
+    templateBlockedCount,
+    overwrittenCount,
+    pasteablePlacements,
+    invalidPlacements
   };
 }
 
 function pasteSelection(targetRow, targetCol) {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return false;
+  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return { success: false, count: 0 };
 
-  const { placements } = selectionState.clipboard;
+  const check = canPasteSelection(targetRow, targetCol);
+  if (!check.ok) return { success: false, count: 0 };
+
+  const { pasteablePlacements } = check;
+  if (pasteablePlacements.length === 0) return { success: false, count: 0 };
+
   const currentPage = getCurrentPage();
-  const targetKeys = placements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
+  const targetKeys = pasteablePlacements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
 
   pushHistory();
 
@@ -981,7 +1071,7 @@ function pasteSelection(targetRow, targetCol) {
     (pl) => !targetKeys.includes(placementKey(pl.row, pl.col))
   );
 
-  for (const p of placements) {
+  for (const p of pasteablePlacements) {
     currentPage.placements.push({
       row: targetRow + p.offsetRow,
       col: targetCol + p.offsetCol,
@@ -990,7 +1080,7 @@ function pasteSelection(targetRow, targetCol) {
   }
 
   const newSelection = new Set();
-  for (const p of placements) {
+  for (const p of pasteablePlacements) {
     newSelection.add(placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
   }
   selectionState.selectedCells = newSelection;
@@ -998,7 +1088,7 @@ function pasteSelection(targetRow, targetCol) {
   selectionState.pastePreviewCell = null;
 
   renderAll();
-  return true;
+  return { success: true, count: pasteablePlacements.length, total: check.totalCount };
 }
 
 function startMoveMode() {
@@ -4909,13 +4999,28 @@ function handleStageCellClick(row, col, additive) {
         const shortageText = check.shortages.map(s => `${s.char}(${s.style}): 需要${s.needed}，可用${s.available}`).join("\n");
         alert(`${check.reason}：\n${shortageText}`);
       } else {
-        alert(check.reason);
+        let detail = "";
+        const details = [];
+        if (check.outOfBoundsCount > 0) details.push(`${check.outOfBoundsCount}个位置越界`);
+        if (check.templateBlockedCount > 0) details.push(`${check.templateBlockedCount}个位置为模板禁用格`);
+        if (details.length > 0) detail = `\n详情：${details.join("，")}`;
+        alert(check.reason + detail);
       }
       return;
     }
-    if (check.willOverwrite) {
-      if (!confirm(`粘贴后会覆盖 ${check.overwrittenCount} 个已有落字，是否继续？`)) return;
+    let confirmed = true;
+    let confirmMsg = "";
+    if (check.isPartial) {
+      const parts = [];
+      parts.push(`共${check.totalCount}个字，可粘贴${check.pasteableCount}个`);
+      if (check.outOfBoundsCount > 0) parts.push(`${check.outOfBoundsCount}个越界`);
+      if (check.templateBlockedCount > 0) parts.push(`${check.templateBlockedCount}个为模板禁用格`);
+      confirmMsg = parts.join("，") + "。\n是否粘贴可用部分？";
+      confirmed = confirm(confirmMsg);
+    } else if (check.willOverwrite) {
+      confirmed = confirm(`粘贴后会覆盖 ${check.overwrittenCount} 个已有落字，是否继续？`);
     }
+    if (!confirmed) return;
     pasteSelection(row, col);
     return;
   }

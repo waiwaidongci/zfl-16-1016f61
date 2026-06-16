@@ -467,6 +467,11 @@ h3 {
   background: rgba(166, 64, 55, 0.15) !important;
 }
 
+.cell.paste-preview.paste-preview-template-blocked {
+  outline-color: var(--gold);
+  background: rgba(183, 134, 44, 0.2) !important;
+}
+
 .cell.vertical {
   writing-mode: vertical-rl;
 }
