@@ -3152,10 +3152,9 @@ function navigateProofreadIssue(direction) {
   }
   if (issue.locations && issue.locations.length > 0) {
     highlightCells(issue.locations, issue.type === "warning");
-  } else {
-    updateProofreadActiveItem();
   }
 
+  updateProofreadActiveItem();
   updateProofreadNavBar(filtered);
 }
 
