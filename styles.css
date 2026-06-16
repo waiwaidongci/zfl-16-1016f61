@@ -274,6 +274,33 @@ h3 {
   font-size: 12px;
 }
 
+.wear-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.wear-new {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.wear-worn {
+  background: #fff8e1;
+  color: #f57f17;
+  border: 1px solid #ffd54f;
+}
+
+.wear-old {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+}
+
 .mini-btn {
   width: 32px;
   height: 32px;

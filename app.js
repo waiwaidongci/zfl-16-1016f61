@@ -1196,6 +1196,7 @@ const els = {
   wearInput: document.querySelector("#wearInput"),
   inventorySearch: document.querySelector("#inventorySearch"),
   styleFilter: document.querySelector("#styleFilter"),
+  wearFilter: document.querySelector("#wearFilter"),
   selectedTypeLabel: document.querySelector("#selectedTypeLabel"),
   shortageBadge: document.querySelector("#shortageBadge"),
   usageList: document.querySelector("#usageList"),
@@ -1409,14 +1410,29 @@ function renderStyleFilter() {
   els.styleFilter.value = styles.includes(current) ? current : "all";
 }
 
+function getWearBadgeClass(wear) {
+  switch (wear) {
+    case "新":
+      return "wear-badge wear-new";
+    case "微磨":
+      return "wear-badge wear-worn";
+    case "旧痕":
+      return "wear-badge wear-old";
+    default:
+      return "wear-badge";
+  }
+}
+
 function renderInventory() {
   const keyword = els.inventorySearch.value.trim();
   const style = els.styleFilter.value;
+  const wear = els.wearFilter.value;
   const usage = getUsage();
   const items = state.inventory.filter((item) => {
     const matchesKeyword = !keyword || `${item.char}${item.style}${item.wear}`.includes(keyword);
     const matchesStyle = style === "all" || item.style === style;
-    return matchesKeyword && matchesStyle;
+    const matchesWear = wear === "all" || item.wear === wear;
+    return matchesKeyword && matchesStyle && matchesWear;
   });
 
   els.inventoryCount.textContent = `${state.inventory.length}枚字模`;
@@ -1424,12 +1440,13 @@ function renderInventory() {
     .map((item) => {
       const used = usage[item.id] || 0;
       const selected = item.id === state.selectedTypeId ? "selected" : "";
+      const wearBadgeClass = getWearBadgeClass(item.wear);
       return `
         <article class="type-card ${selected}" draggable="true" data-type-id="${item.id}">
           <div class="glyph" style="font-size:${Math.min(item.size, 36)}px">${escapeHtml(item.char)}</div>
           <div class="type-meta">
             <strong>${escapeHtml(item.char)} · ${escapeHtml(item.style)}</strong>
-            <span>${item.size}px · ${escapeHtml(item.wear)} · 已用${used}/${item.quantity}</span>
+            <span>${item.size}px · <span class="${wearBadgeClass}">${escapeHtml(item.wear)}</span> · 已用${used}/${item.quantity}</span>
           </div>
           <button class="mini-btn" title="删除字模" data-delete-type="${item.id}" type="button">×</button>
         </article>
@@ -3581,6 +3598,7 @@ els.workTitle.addEventListener("input", () => {
 els.typeForm.addEventListener("submit", addType);
 els.inventorySearch.addEventListener("input", renderInventory);
 els.styleFilter.addEventListener("change", renderInventory);
+els.wearFilter.addEventListener("change", renderInventory);
 els.saveDraftBtn.addEventListener("click", saveDraft);
 els.exportBtn.addEventListener("click", exportPreview);
 els.clearBoardBtn.addEventListener("click", () => {
