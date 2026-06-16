@@ -1,6 +1,7 @@
 const storageKey = "zfl16-movable-type-workshop";
 const archiveStorageKey = "zfl16-movable-type-archive";
 const archiveMetaKey = "zfl16-movable-type-archive-meta";
+const purchaseDraftKey = "zfl16-purchase-drafts";
 
 const printPreviewDefaults = {
   paperColor: "#fffaf1",
@@ -1261,6 +1262,8 @@ const els = {
   slAddAllMissing: document.querySelector("#slAddAllMissing"),
   slAddAllLow: document.querySelector("#slAddAllLow"),
   slSummary: document.querySelector(".sl-summary"),
+  slSaveDraft: document.querySelector("#slSaveDraft"),
+  slDraftList: document.querySelector("#slDraftList"),
   printPreviewModal: document.querySelector("#printPreviewModal"),
   ppClose: document.querySelector("#ppClose"),
   ppCancel: document.querySelector("#ppCancel"),
@@ -3487,6 +3490,273 @@ function confirmImport() {
 let slAnalysisResult = null;
 let slAddedItems = new Set();
 
+function loadPurchaseDrafts() {
+  const saved = localStorage.getItem(purchaseDraftKey);
+  if (!saved) return [];
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return [];
+  }
+}
+
+function savePurchaseDrafts(drafts) {
+  localStorage.setItem(purchaseDraftKey, JSON.stringify(drafts));
+}
+
+function saveShortageAsDraft() {
+  if (!slAnalysisResult) {
+    alert("请先分析字模需求");
+    return;
+  }
+
+  const style = els.slDefaultStyle.value.trim();
+  if (!style) {
+    alert("请先设置默认风格");
+    els.slDefaultStyle.focus();
+    return;
+  }
+
+  const purchasableItems = slAnalysisResult.filter((r) => r.status === "missing" || r.status === "low");
+  if (purchasableItems.length === 0) {
+    alert("当前没有缺字或库存不足的字，无需保存草稿");
+    return;
+  }
+
+  const size = Number(els.slDefaultSize.value) || 24;
+  const quantity = Number(els.slDefaultQuantity.value) || 3;
+  const wear = els.slDefaultWear.value;
+  const sourceText = els.slText.value.trim();
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const draft = {
+    id: crypto.randomUUID(),
+    name: `采购草稿 ${dateStr}`,
+    createdAt: Date.now(),
+    defaultStyle: style,
+    defaultSize: size,
+    defaultWear: wear,
+    defaultQuantity: quantity,
+    sourceText: sourceText,
+    items: purchasableItems.map((item) => {
+      const quantityInput = item.status === "missing"
+        ? document.querySelector(`[data-sl-quantity-missing="${item.char}"]`)
+        : document.querySelector(`[data-sl-quantity-low="${item.char}"]`);
+      const itemQty = quantityInput ? Number(quantityInput.value) : (item.status === "missing" ? item.needed : item.shortage);
+      return {
+        char: item.char,
+        status: item.status,
+        needed: item.needed,
+        quantity: itemQty
+      };
+    })
+  };
+
+  const drafts = loadPurchaseDrafts();
+  drafts.unshift(draft);
+  savePurchaseDrafts(drafts);
+  renderPurchaseDrafts();
+  alert(`已保存采购草稿「${draft.name}」，包含 ${draft.items.length} 种字`);
+}
+
+function deletePurchaseDraft(draftId) {
+  if (!confirm("确定删除此采购草稿？")) return;
+  const drafts = loadPurchaseDrafts().filter((d) => d.id !== draftId);
+  savePurchaseDrafts(drafts);
+  renderPurchaseDrafts();
+}
+
+function renamePurchaseDraft(draftId) {
+  const drafts = loadPurchaseDrafts();
+  const draft = drafts.find((d) => d.id === draftId);
+  if (!draft) return;
+
+  const newName = prompt("请输入新的草稿名称：", draft.name);
+  if (!newName || !newName.trim()) return;
+
+  draft.name = newName.trim();
+  draft.updatedAt = Date.now();
+  savePurchaseDrafts(drafts);
+  renderPurchaseDrafts();
+}
+
+function showDraftDetail(draftId) {
+  const drafts = loadPurchaseDrafts();
+  const draft = drafts.find((d) => d.id === draftId);
+  if (!draft) return;
+
+  const date = new Date(draft.createdAt);
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+
+  const missingItems = draft.items.filter((i) => i.status === "missing");
+  const lowItems = draft.items.filter((i) => i.status === "low");
+
+  const itemsHtml = draft.items
+    .map((item) => {
+      const statusLabel = item.status === "missing" ? "缺字" : "不足";
+      const statusClass = item.status === "missing" ? "red" : "gold";
+      return `
+        <div class="sl-detail-item">
+          <span class="sl-detail-char">${escapeHtml(item.char)}</span>
+          <span class="sl-detail-status" style="color:var(--${statusClass})">${statusLabel}</span>
+          <span class="sl-detail-qty">需${item.needed}枚</span>
+          <span class="sl-detail-qty">采购${item.quantity}枚</span>
+        </div>
+      `;
+    })
+    .join("");
+
+  const totalQty = draft.items.reduce((sum, i) => sum + i.quantity, 0);
+
+  const detailHtml = `
+    <div class="sl-draft-detail">
+      <div class="sl-detail-head">
+        <h3>${escapeHtml(draft.name)}</h3>
+        <span class="sl-detail-date">创建于 ${dateStr}</span>
+      </div>
+      <div class="sl-detail-meta">
+        <div class="sl-detail-meta-row">
+          <span>默认风格：</span><strong>${escapeHtml(draft.defaultStyle)}</strong>
+        </div>
+        <div class="sl-detail-meta-row">
+          <span>字号：</span><strong>${draft.defaultSize}</strong>
+        </div>
+        <div class="sl-detail-meta-row">
+          <span>磨损状态：</span><strong>${escapeHtml(draft.defaultWear)}</strong>
+        </div>
+        <div class="sl-detail-meta-row">
+          <span>默认数量：</span><strong>${draft.defaultQuantity}</strong>
+        </div>
+      </div>
+      <div class="sl-detail-summary">
+        <span>共 ${draft.items.length} 种字，${totalQty} 枚</span>
+        ${missingItems.length ? `<span style="color:var(--red)">缺字 ${missingItems.length} 种</span>` : ""}
+        ${lowItems.length ? `<span style="color:var(--gold)">不足 ${lowItems.length} 种</span>` : ""}
+      </div>
+      <div class="sl-detail-items-title">采购明细</div>
+      <div class="sl-detail-items">${itemsHtml}</div>
+      ${draft.sourceText ? `
+        <div class="sl-detail-source-title">源文本</div>
+        <div class="sl-detail-source">${escapeHtml(draft.sourceText)}</div>
+      ` : ""}
+    </div>
+  `;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal sl-detail-modal">
+      <div class="modal-head">
+        <h2>采购草稿详情</h2>
+        <button class="mini-btn sl-detail-close" type="button">×</button>
+      </div>
+      <div class="modal-body">${detailHtml}</div>
+      <div class="modal-foot">
+        <button class="sl-detail-close" type="button">关闭</button>
+        <button class="primary sl-detail-apply" type="button">一键加入字模库</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.querySelectorAll(".sl-detail-close").forEach((btn) => {
+    btn.addEventListener("click", () => overlay.remove());
+  });
+  overlay.querySelector(".sl-detail-apply").addEventListener("click", () => {
+    overlay.remove();
+    applyPurchaseDraft(draftId);
+  });
+}
+
+function applyPurchaseDraft(draftId) {
+  const drafts = loadPurchaseDrafts();
+  const draft = drafts.find((d) => d.id === draftId);
+  if (!draft) return;
+
+  const style = draft.defaultStyle;
+  const size = draft.defaultSize;
+  const wear = draft.defaultWear;
+
+  if (!style) {
+    alert("此草稿缺少默认风格设置");
+    return;
+  }
+
+  pushHistory();
+  let addedCount = 0;
+
+  for (const item of draft.items) {
+    const existingItem = state.inventory.find((i) => i.char === item.char && i.style === style && i.size === size && i.wear === wear);
+    if (existingItem) {
+      existingItem.quantity += item.quantity;
+    } else {
+      const newItem = {
+        id: crypto.randomUUID(),
+        char: item.char,
+        style,
+        size,
+        quantity: item.quantity,
+        wear
+      };
+      state.inventory.unshift(newItem);
+    }
+    addedCount++;
+  }
+
+  renderAll();
+  alert(`已将草稿「${draft.name}」中的 ${addedCount} 种字一键加入字模库`);
+}
+
+function renderPurchaseDrafts() {
+  const drafts = loadPurchaseDrafts();
+  if (!els.slDraftList) return;
+
+  if (drafts.length === 0) {
+    els.slDraftList.innerHTML = "";
+    return;
+  }
+
+  els.slDraftList.innerHTML = drafts
+    .map((draft) => {
+      const date = new Date(draft.createdAt);
+      const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      const missingCount = draft.items.filter((i) => i.status === "missing").length;
+      const lowCount = draft.items.filter((i) => i.status === "low").length;
+      const charsPreview = draft.items.map((i) => i.char).join("");
+
+      return `
+        <div class="sl-draft-card" data-draft-id="${draft.id}">
+          <div class="sl-draft-card-head">
+            <span class="sl-draft-card-name">${escapeHtml(draft.name)}</span>
+            <span class="sl-draft-card-date">${timeStr}</span>
+          </div>
+          <div class="sl-draft-card-meta">
+            <span>风格 <strong>${escapeHtml(draft.defaultStyle)}</strong></span>
+            <span>字号 <strong>${draft.defaultSize}</strong></span>
+            <span>磨损 <strong>${escapeHtml(draft.defaultWear)}</strong></span>
+            <span>数量 <strong>${draft.defaultQuantity}</strong></span>
+          </div>
+          <div class="sl-draft-card-chars">${escapeHtml(charsPreview)}</div>
+          <div class="sl-draft-card-summary">
+            ${missingCount ? `<span style="color:var(--red)">缺字${missingCount}种</span>` : ""}
+            ${lowCount ? `<span style="color:var(--gold)">不足${lowCount}种</span>` : ""}
+          </div>
+          <div class="sl-draft-card-actions">
+            <button class="mini-btn primary" type="button" data-draft-apply="${draft.id}">一键加入</button>
+            <button class="mini-btn" type="button" data-draft-detail="${draft.id}">详情</button>
+            <button class="mini-btn" type="button" data-draft-rename="${draft.id}">重命名</button>
+            <button class="mini-btn" type="button" data-draft-delete="${draft.id}">删除</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function countChars(text) {
   const count = {};
   for (const ch of text) {
@@ -3579,6 +3849,7 @@ function openShortageListModal() {
   }
   slAnalysisResult = null;
   slAddedItems.clear();
+  renderPurchaseDrafts();
   els.slText.focus();
 }
 
@@ -4307,6 +4578,7 @@ els.slCancel.addEventListener("click", closeShortageListModal);
 els.slAnalyze.addEventListener("click", analyzeShortageText);
 els.slAddAllMissing.addEventListener("click", addAllMissing);
 els.slAddAllLow.addEventListener("click", addAllLow);
+els.slSaveDraft.addEventListener("click", saveShortageAsDraft);
 
 els.shortageListModal.addEventListener("click", (event) => {
   if (event.target === els.shortageListModal) closeShortageListModal();
@@ -4320,6 +4592,30 @@ els.shortageListModal.addEventListener("click", (event) => {
   const addLowBtn = event.target.closest("[data-sl-add-low]");
   if (addLowBtn) {
     addLowToInventory(addLowBtn.dataset.slAddLow);
+    return;
+  }
+
+  const applyDraftBtn = event.target.closest("[data-draft-apply]");
+  if (applyDraftBtn) {
+    applyPurchaseDraft(applyDraftBtn.dataset.draftApply);
+    return;
+  }
+
+  const deleteDraftBtn = event.target.closest("[data-draft-delete]");
+  if (deleteDraftBtn) {
+    deletePurchaseDraft(deleteDraftBtn.dataset.draftDelete);
+    return;
+  }
+
+  const renameDraftBtn = event.target.closest("[data-draft-rename]");
+  if (renameDraftBtn) {
+    renamePurchaseDraft(renameDraftBtn.dataset.draftRename);
+    return;
+  }
+
+  const detailDraftBtn = event.target.closest("[data-draft-detail]");
+  if (detailDraftBtn) {
+    showDraftDetail(detailDraftBtn.dataset.draftDetail);
     return;
   }
 });

@@ -354,70 +354,81 @@
           <button id="slClose" class="mini-btn" type="button">×</button>
         </div>
         <div class="modal-body">
-          <label class="sl-input-label">
-            输入待排正文
-            <textarea id="slText" rows="4" placeholder="请输入需要排版的文字内容，系统将统计每个字的需求量并对比字模库存..."></textarea>
-          </label>
+          <div class="sl-main-area">
+            <label class="sl-input-label">
+              输入待排正文
+              <textarea id="slText" rows="4" placeholder="请输入需要排版的文字内容，系统将统计每个字的需求量并对比字模库存..."></textarea>
+            </label>
 
-          <div class="sl-direction">
-            <span>排版方向</span>
-            <label class="sl-radio"><input type="radio" name="slDir" value="horizontal" checked />横排</label>
-            <label class="sl-radio"><input type="radio" name="slDir" value="vertical" />竖排</label>
+            <div class="sl-direction">
+              <span>排版方向</span>
+              <label class="sl-radio"><input type="radio" name="slDir" value="horizontal" checked />横排</label>
+              <label class="sl-radio"><input type="radio" name="slDir" value="vertical" />竖排</label>
+            </div>
+
+            <div class="sl-batch-settings">
+              <h3>批量设置（用于缺字加入字模库）</h3>
+              <div class="sl-batch-fields">
+                <label>
+                  默认风格
+                  <input id="slDefaultStyle" type="text" placeholder="例：宋体旧字" />
+                </label>
+                <label>
+                  默认字号
+                  <input id="slDefaultSize" type="number" min="8" max="72" value="24" />
+                </label>
+                <label>
+                  默认数量
+                  <input id="slDefaultQuantity" type="number" min="1" max="99" value="3" />
+                </label>
+                <label>
+                  磨损状态
+                  <select id="slDefaultWear">
+                    <option value="新">新</option>
+                    <option value="微磨" selected>微磨</option>
+                    <option value="旧痕">旧痕</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <button id="slAnalyze" class="primary" type="button">分析字模需求</button>
+
+            <div id="slResults" class="sl-results" hidden>
+              <div class="sl-summary"></div>
+
+              <div class="sl-section">
+                <div class="sl-section-head">
+                  <h3><span class="sl-dot red"></span>缺字（字模库中无此字）</h3>
+                  <button id="slAddAllMissing" class="mini-btn sl-add-all" type="button">一键加入字模库</button>
+                </div>
+                <div id="slMissingList" class="sl-list"></div>
+              </div>
+
+              <div class="sl-section">
+                <div class="sl-section-head">
+                  <h3><span class="sl-dot gold"></span>库存不足（数量不够）</h3>
+                  <button id="slAddAllLow" class="mini-btn sl-add-all" type="button">一键补充采购</button>
+                </div>
+                <div id="slLowList" class="sl-list"></div>
+              </div>
+
+              <div class="sl-section">
+                <div class="sl-section-head">
+                  <h3><span class="sl-dot green"></span>可直接排版（数量充足）</h3>
+                </div>
+                <div id="slOkList" class="sl-list"></div>
+              </div>
+
+              <button id="slSaveDraft" class="primary sl-save-draft-btn" type="button">保存为采购草稿</button>
+            </div>
           </div>
 
-          <div class="sl-batch-settings">
-            <h3>批量设置（用于缺字加入字模库）</h3>
-            <div class="sl-batch-fields">
-              <label>
-                默认风格
-                <input id="slDefaultStyle" type="text" placeholder="例：宋体旧字" />
-              </label>
-              <label>
-                默认字号
-                <input id="slDefaultSize" type="number" min="8" max="72" value="24" />
-              </label>
-              <label>
-                默认数量
-                <input id="slDefaultQuantity" type="number" min="1" max="99" value="3" />
-              </label>
-              <label>
-                磨损状态
-                <select id="slDefaultWear">
-                  <option value="新">新</option>
-                  <option value="微磨" selected>微磨</option>
-                  <option value="旧痕">旧痕</option>
-                </select>
-              </label>
+          <div class="sl-draft-sidebar">
+            <div class="sl-draft-sidebar-head">
+              <h3>采购方案草稿</h3>
             </div>
-          </div>
-
-          <button id="slAnalyze" class="primary" type="button">分析字模需求</button>
-
-          <div id="slResults" class="sl-results" hidden>
-            <div class="sl-summary"></div>
-
-            <div class="sl-section">
-              <div class="sl-section-head">
-                <h3><span class="sl-dot red"></span>缺字（字模库中无此字）</h3>
-                <button id="slAddAllMissing" class="mini-btn sl-add-all" type="button">一键加入字模库</button>
-              </div>
-              <div id="slMissingList" class="sl-list"></div>
-            </div>
-
-            <div class="sl-section">
-              <div class="sl-section-head">
-                <h3><span class="sl-dot gold"></span>库存不足（数量不够）</h3>
-                <button id="slAddAllLow" class="mini-btn sl-add-all" type="button">一键补充采购</button>
-              </div>
-              <div id="slLowList" class="sl-list"></div>
-            </div>
-
-            <div class="sl-section">
-              <div class="sl-section-head">
-                <h3><span class="sl-dot green"></span>可直接排版（数量充足）</h3>
-              </div>
-              <div id="slOkList" class="sl-list"></div>
-            </div>
+            <div id="slDraftList" class="sl-draft-list"></div>
           </div>
         </div>
         <div class="modal-foot">
