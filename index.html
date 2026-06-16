@@ -137,7 +137,21 @@
               <div id="shortageBadge" class="badge ok">数量充足</div>
             </div>
           </div>
-          <div id="stage" class="stage" aria-label="排版画布"></div>
+          <div class="selection-toolbar" id="selectionToolbar" hidden>
+            <span class="selection-info" id="selectionInfo">已选择 0 个格子</span>
+            <div class="selection-actions">
+              <button id="copySelectionBtn" class="mini-btn" type="button" title="复制选区 (Ctrl+C)">📋 复制</button>
+              <button id="pasteSelectionBtn" class="mini-btn" type="button" title="粘贴选区 (Ctrl+V)">📄 粘贴</button>
+              <button id="moveSelectionBtn" class="mini-btn" type="button" title="移动选区模式">✥ 移动</button>
+              <button id="clearSelectionBtn" class="mini-btn" type="button" title="清空选区内容">🗑 清空</button>
+              <button id="draftFromSelectionBtn" class="mini-btn primary" type="button" title="按选区生成草稿片段">💾 存为草稿</button>
+              <button id="cancelSelectionBtn" class="mini-btn" type="button" title="取消选择">✕ 取消</button>
+            </div>
+          </div>
+          <div class="stage-container">
+            <div id="stage" class="stage" aria-label="排版画布"></div>
+            <div id="selectionMarquee" class="selection-marquee" hidden></div>
+          </div>
         </section>
 
         <aside class="panel right-panel">

@@ -286,6 +286,54 @@ h3 {
   padding: 14px;
 }
 
+.selection-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  background: rgba(183, 134, 44, 0.08);
+}
+
+.selection-info {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.selection-actions .mini-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.selection-actions .mini-btn.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fffaf1;
+}
+
+.stage-container {
+  position: relative;
+}
+
+.selection-marquee {
+  position: absolute;
+  border: 2px solid var(--blue);
+  background: rgba(54, 95, 125, 0.12);
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 3px;
+}
+
 .status-strip {
   display: flex;
   justify-content: space-between;
@@ -368,6 +416,28 @@ h3 {
   border-style: solid;
   background: rgba(47, 41, 33, 0.9);
   color: #fff5df;
+}
+
+.cell.selected {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px rgba(54, 95, 125, 0.2);
+}
+
+.cell.used.selected {
+  outline-color: var(--gold);
+  box-shadow: inset 0 0 0 2px rgba(183, 134, 44, 0.3);
+}
+
+.cell.paste-preview {
+  outline: 2px dashed var(--green);
+  outline-offset: -2px;
+  background: rgba(60, 112, 86, 0.15) !important;
+}
+
+.cell.paste-preview.paste-preview-invalid {
+  outline-color: var(--red);
+  background: rgba(166, 64, 55, 0.15) !important;
 }
 
 .cell.vertical {

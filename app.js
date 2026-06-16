@@ -670,6 +670,472 @@ function redo() {
   updateHistoryButtons();
 }
 
+let selectionState = {
+  selectedCells: new Set(),
+  clipboard: null,
+  isSelecting: false,
+  selectionStart: null,
+  isMoveMode: false,
+  moveOriginCell: null,
+  moveOriginalPlacements: [],
+  isPasteMode: false,
+  pastePreviewCell: null
+};
+
+function clearSelection() {
+  selectionState.selectedCells.clear();
+  selectionState.isMoveMode = false;
+  selectionState.moveOriginCell = null;
+  selectionState.moveOriginalPlacements = [];
+  selectionState.isPasteMode = false;
+  selectionState.pastePreviewCell = null;
+  updateSelectionUI();
+  renderStageSelection();
+  hidePastePreview();
+}
+
+function getSelectedCellsArray() {
+  return Array.from(selectionState.selectedCells).map((key) => {
+    const [row, col] = key.split(":").map(Number);
+    return { row, col };
+  });
+}
+
+function getSelectionBounds() {
+  const cells = getSelectedCellsArray();
+  if (cells.length === 0) return null;
+  let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+  for (const cell of cells) {
+    minRow = Math.min(minRow, cell.row);
+    maxRow = Math.max(maxRow, cell.row);
+    minCol = Math.min(minCol, cell.col);
+    maxCol = Math.max(maxCol, cell.col);
+  }
+  return { minRow, maxRow, minCol, maxCol, rows: maxRow - minRow + 1, cols: maxCol - minCol + 1 };
+}
+
+function updateSelectionUI() {
+  const count = selectionState.selectedCells.size;
+  if (els.selectionToolbar) {
+    els.selectionToolbar.hidden = count === 0 && !selectionState.isPasteMode;
+  }
+  if (els.selectionInfo) {
+    if (selectionState.isPasteMode) {
+      els.selectionInfo.textContent = "粘贴模式：点击格子选择粘贴位置";
+    } else if (selectionState.isMoveMode) {
+      els.selectionInfo.textContent = `移动模式：已选择 ${count} 个格子，点击目标位置移动`;
+    } else {
+      els.selectionInfo.textContent = `已选择 ${count} 个格子`;
+    }
+  }
+  if (els.moveSelectionBtn) {
+    els.moveSelectionBtn.textContent = selectionState.isMoveMode ? "✥ 取消移动" : "✥ 移动";
+    els.moveSelectionBtn.classList.toggle("primary", selectionState.isMoveMode);
+  }
+  if (els.pasteSelectionBtn) {
+    els.pasteSelectionBtn.disabled = !selectionState.clipboard;
+    els.pasteSelectionBtn.textContent = selectionState.isPasteMode ? "📄 取消粘贴" : "📄 粘贴";
+    els.pasteSelectionBtn.classList.toggle("primary", selectionState.isPasteMode);
+  }
+}
+
+function renderStageSelection() {
+  const cells = document.querySelectorAll(".cell");
+  cells.forEach((cell) => {
+    const row = Number(cell.dataset.row);
+    const col = Number(cell.dataset.col);
+    const key = placementKey(row, col);
+    cell.classList.toggle("selected", selectionState.selectedCells.has(key));
+  });
+}
+
+function selectCellRange(startRow, startCol, endRow, endCol, additive = false) {
+  const minRow = Math.min(startRow, endRow);
+  const maxRow = Math.max(startRow, endRow);
+  const minCol = Math.min(startCol, endCol);
+  const maxCol = Math.max(startCol, endCol);
+
+  if (!additive) {
+    selectionState.selectedCells.clear();
+  }
+
+  for (let r = minRow; r <= maxRow; r += 1) {
+    for (let c = minCol; c <= maxCol; c += 1) {
+      selectionState.selectedCells.add(placementKey(r, c));
+    }
+  }
+
+  updateSelectionUI();
+  renderStageSelection();
+}
+
+function getCellFromPoint(clientX, clientY) {
+  const stageRect = els.stage.getBoundingClientRect();
+  const x = clientX - stageRect.left;
+  const y = clientY - stageRect.top;
+
+  if (x < 0 || y < 0 || x > stageRect.width || y > stageRect.height) {
+    return null;
+  }
+
+  const { cols, rows } = getGrid();
+  const cellWidth = stageRect.width / cols;
+  const cellHeight = stageRect.height / rows;
+
+  const col = Math.floor(x / cellWidth);
+  const row = Math.floor(y / cellHeight);
+
+  if (row < 0 || row >= rows || col < 0 || col >= cols) {
+    return null;
+  }
+
+  return { row, col };
+}
+
+function updateMarquee(startX, startY, endX, endY) {
+  if (!els.selectionMarquee) return;
+
+  const stageRect = els.stage.getBoundingClientRect();
+  const containerRect = els.stageContainer.getBoundingClientRect();
+
+  const relStartX = startX - containerRect.left;
+  const relStartY = startY - containerRect.top;
+  const relEndX = endX - containerRect.left;
+  const relEndY = endY - containerRect.top;
+
+  const left = Math.min(relStartX, relEndX);
+  const top = Math.min(relStartY, relEndY);
+  const width = Math.abs(relEndX - relStartX);
+  const height = Math.abs(relEndY - relStartY);
+
+  els.selectionMarquee.style.left = `${left}px`;
+  els.selectionMarquee.style.top = `${top}px`;
+  els.selectionMarquee.style.width = `${width}px`;
+  els.selectionMarquee.style.height = `${height}px`;
+  els.selectionMarquee.hidden = false;
+}
+
+function hideMarquee() {
+  if (els.selectionMarquee) {
+    els.selectionMarquee.hidden = true;
+  }
+}
+
+function showPastePreview(row, col) {
+  if (!selectionState.clipboard || !selectionState.clipboard.placements) return;
+
+  hidePastePreview();
+
+  const { placements } = selectionState.clipboard;
+  const check = canPasteSelection(row, col);
+
+  placements.forEach((p) => {
+    const r = row + p.offsetRow;
+    const c = col + p.offsetCol;
+    const cell = document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+    if (cell) {
+      cell.classList.add("paste-preview");
+      if (!check.ok) {
+        cell.classList.add("paste-preview-invalid");
+      }
+    }
+  });
+}
+
+function hidePastePreview() {
+  document.querySelectorAll(".cell.paste-preview").forEach((cell) => {
+    cell.classList.remove("paste-preview", "paste-preview-invalid");
+  });
+}
+
+function startPasteMode() {
+  if (!selectionState.clipboard) return;
+  selectionState.isPasteMode = true;
+  selectionState.isMoveMode = false;
+  selectionState.pastePreviewCell = null;
+  updateSelectionUI();
+}
+
+function endPasteMode() {
+  selectionState.isPasteMode = false;
+  selectionState.pastePreviewCell = null;
+  hidePastePreview();
+  updateSelectionUI();
+}
+
+function copySelection() {
+  const bounds = getSelectionBounds();
+  if (!bounds) return;
+
+  const currentPage = getCurrentPage();
+  const map = new Map(currentPage.placements.map((item) => [placementKey(item.row, item.col), item]));
+
+  const clipboard = [];
+  for (let r = bounds.minRow; r <= bounds.maxRow; r += 1) {
+    for (let c = bounds.minCol; c <= bounds.maxCol; c += 1) {
+      const key = placementKey(r, c);
+      const placement = map.get(key);
+      if (placement) {
+        clipboard.push({
+          offsetRow: r - bounds.minRow,
+          offsetCol: c - bounds.minCol,
+          typeId: placement.typeId
+        });
+      }
+    }
+  }
+
+  selectionState.clipboard = {
+    placements: clipboard,
+    bounds: { rows: bounds.rows, cols: bounds.cols }
+  };
+
+  updateSelectionUI();
+}
+
+function canPasteSelection(targetRow, targetCol) {
+  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) {
+    return { ok: false, reason: "剪贴板为空" };
+  }
+
+  const { cols, rows } = getGrid();
+  const { placements, bounds } = selectionState.clipboard;
+
+  const outOfBounds = placements.some((p) => {
+    const r = targetRow + p.offsetRow;
+    const c = targetCol + p.offsetCol;
+    return r < 0 || r >= rows || c < 0 || c >= cols;
+  });
+
+  if (outOfBounds) {
+    return { ok: false, reason: "粘贴位置越界，部分字将落在版面外" };
+  }
+
+  const currentPage = getCurrentPage();
+  const existingMap = new Map(currentPage.placements.map((item) => [placementKey(item.row, item.col), item]));
+  const willOverwrite = placements.some((p) => {
+    const r = targetRow + p.offsetRow;
+    const c = targetCol + p.offsetCol;
+    return existingMap.has(placementKey(r, c));
+  });
+
+  const usage = getUsage();
+  const needed = {};
+  for (const p of placements) {
+    needed[p.typeId] = (needed[p.typeId] || 0) + 1;
+  }
+
+  const targetKeys = placements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
+  const existingInTarget = currentPage.placements.filter(
+    (pl) => targetKeys.includes(placementKey(pl.row, pl.col))
+  );
+  const freedTypeIdCount = {};
+  for (const pl of existingInTarget) {
+    freedTypeIdCount[pl.typeId] = (freedTypeIdCount[pl.typeId] || 0) + 1;
+  }
+
+  const shortages = [];
+  for (const [typeId, count] of Object.entries(needed)) {
+    const item = state.inventory.find((i) => i.id === typeId);
+    if (!item) continue;
+    const used = usage[typeId] || 0;
+    const freed = freedTypeIdCount[typeId] || 0;
+    const netUsed = used - freed + count;
+    if (netUsed > item.quantity) {
+      shortages.push({ char: item.char, style: item.style, needed: netUsed, available: item.quantity });
+    }
+  }
+
+  if (shortages.length > 0) {
+    return {
+      ok: false,
+      reason: "字模库存不足",
+      shortages
+    };
+  }
+
+  return {
+    ok: true,
+    willOverwrite,
+    overwrittenCount: placements.filter((p) => existingMap.has(placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol))).length
+  };
+}
+
+function pasteSelection(targetRow, targetCol) {
+  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return false;
+
+  const { placements } = selectionState.clipboard;
+  const currentPage = getCurrentPage();
+  const targetKeys = placements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
+
+  pushHistory();
+
+  currentPage.placements = currentPage.placements.filter(
+    (pl) => !targetKeys.includes(placementKey(pl.row, pl.col))
+  );
+
+  for (const p of placements) {
+    currentPage.placements.push({
+      row: targetRow + p.offsetRow,
+      col: targetCol + p.offsetCol,
+      typeId: p.typeId
+    });
+  }
+
+  const newSelection = new Set();
+  for (const p of placements) {
+    newSelection.add(placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
+  }
+  selectionState.selectedCells = newSelection;
+  selectionState.isPasteMode = false;
+  selectionState.pastePreviewCell = null;
+
+  renderAll();
+  return true;
+}
+
+function startMoveMode() {
+  if (selectionState.selectedCells.size === 0) return;
+
+  const currentPage = getCurrentPage();
+  const selectedPlacements = currentPage.placements.filter((pl) =>
+    selectionState.selectedCells.has(placementKey(pl.row, pl.col))
+  );
+
+  if (selectedPlacements.length === 0) {
+    alert("选区内没有可移动的落字");
+    return;
+  }
+
+  selectionState.isMoveMode = true;
+  selectionState.isPasteMode = false;
+  selectionState.moveOriginalPlacements = structuredClone(selectedPlacements);
+  hidePastePreview();
+  updateSelectionUI();
+}
+
+function endMoveMode() {
+  selectionState.isMoveMode = false;
+  selectionState.moveOriginCell = null;
+  selectionState.moveOriginalPlacements = [];
+  updateSelectionUI();
+}
+
+function moveSelectionTo(targetRow, targetCol) {
+  if (!selectionState.isMoveMode || selectionState.moveOriginalPlacements.length === 0) return false;
+
+  const bounds = getSelectionBounds();
+  if (!bounds) return false;
+
+  const offsetRow = targetRow - bounds.minRow;
+  const offsetCol = targetCol - bounds.minCol;
+
+  const { cols, rows } = getGrid();
+  const outOfBounds = selectionState.moveOriginalPlacements.some((p) => {
+    const r = p.row + offsetRow;
+    const c = p.col + offsetCol;
+    return r < 0 || r >= rows || c < 0 || c >= cols;
+  });
+
+  if (outOfBounds) {
+    return false;
+  }
+
+  const currentPage = getCurrentPage();
+  const originalKeys = new Set(
+    selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col))
+  );
+
+  const targetPlacements = selectionState.moveOriginalPlacements.map((p) => ({
+    row: p.row + offsetRow,
+    col: p.col + offsetCol,
+    typeId: p.typeId
+  }));
+
+  const targetKeys = new Set(targetPlacements.map((p) => placementKey(p.row, p.col)));
+
+  pushHistory();
+
+  currentPage.placements = currentPage.placements.filter(
+    (pl) => !originalKeys.has(placementKey(pl.row, pl.col))
+  );
+
+  currentPage.placements = currentPage.placements.filter(
+    (pl) => !targetKeys.has(placementKey(pl.row, pl.col))
+  );
+
+  currentPage.placements.push(...targetPlacements);
+
+  selectionState.selectedCells = new Set(targetPlacements.map((p) => placementKey(p.row, p.col)));
+
+  selectionState.moveOriginalPlacements = structuredClone(targetPlacements);
+
+  renderAll();
+  return true;
+}
+
+function clearSelectionContent() {
+  if (selectionState.selectedCells.size === 0) return;
+
+  if (!confirm(`确定要清空选中的 ${selectionState.selectedCells.size} 个格子的内容吗？`)) return;
+
+  pushHistory();
+
+  const currentPage = getCurrentPage();
+  currentPage.placements = currentPage.placements.filter(
+    (pl) => !selectionState.selectedCells.has(placementKey(pl.row, pl.col))
+  );
+
+  renderAll();
+}
+
+function saveDraftFromSelection() {
+  if (selectionState.selectedCells.size === 0) return;
+
+  const bounds = getSelectionBounds();
+  if (!bounds) return;
+
+  const currentPage = getCurrentPage();
+  const selectedPlacements = currentPage.placements
+    .filter((pl) => selectionState.selectedCells.has(placementKey(pl.row, pl.col)))
+    .map((pl) => ({
+      row: pl.row - bounds.minRow,
+      col: pl.col - bounds.minCol,
+      typeId: pl.typeId
+    }));
+
+  if (selectedPlacements.length === 0) {
+    alert("选区内没有落字，无法生成草稿");
+    return;
+  }
+
+  const title = prompt("请输入草稿片段名称：", `选区片段 (${bounds.cols}×${bounds.rows})`);
+  if (!title || !title.trim()) return;
+
+  const draftPage = {
+    id: crypto.randomUUID(),
+    name: title.trim(),
+    settings: { ...currentPage.settings },
+    placements: selectedPlacements,
+    activeTemplateId: null
+  };
+
+  state.drafts.unshift({
+    id: crypto.randomUUID(),
+    title: title.trim(),
+    workTitle: state.workTitle,
+    pages: [draftPage],
+    exportSettings: structuredClone(state.exportSettings),
+    savedAt: new Date().toISOString(),
+    isFragment: true,
+    fragmentSize: { rows: bounds.rows, cols: bounds.cols }
+  });
+
+  state.drafts = state.drafts.slice(0, 12);
+  renderAll();
+  alert("草稿片段已保存，可在「草稿与核对」面板中查看");
+}
+
 if (state.pages.length === 0) {
   const firstPage = createDefaultPage();
   state.pages.push(firstPage);
@@ -801,7 +1267,18 @@ const els = {
   ppInfoGap: document.querySelector("#ppInfoGap"),
   ppInfoCount: document.querySelector("#ppInfoCount"),
   ppExportCurrent: document.querySelector("#ppExportCurrent"),
-  ppExportAll: document.querySelector("#ppExportAll")
+  ppExportAll: document.querySelector("#ppExportAll"),
+  ppCanvasWrap: document.querySelector("#ppCanvasWrap"),
+  selectionToolbar: document.querySelector("#selectionToolbar"),
+  selectionInfo: document.querySelector("#selectionInfo"),
+  selectionMarquee: document.querySelector("#selectionMarquee"),
+  copySelectionBtn: document.querySelector("#copySelectionBtn"),
+  pasteSelectionBtn: document.querySelector("#pasteSelectionBtn"),
+  moveSelectionBtn: document.querySelector("#moveSelectionBtn"),
+  clearSelectionBtn: document.querySelector("#clearSelectionBtn"),
+  draftFromSelectionBtn: document.querySelector("#draftFromSelectionBtn"),
+  cancelSelectionBtn: document.querySelector("#cancelSelectionBtn"),
+  stageContainer: document.querySelector(".stage-container")
 };
 
 function loadState() {
@@ -1058,6 +1535,7 @@ function applyTemplate(templateId) {
   const { cols, rows } = getGrid();
   currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
 
+  clearSelection();
   closeTemplateLibraryModal();
   renderAll();
 }
@@ -1328,10 +1806,12 @@ function renderAll() {
   renderInventory();
   renderPages();
   renderStage();
+  renderStageSelection();
   renderUsage();
   renderDrafts();
   renderActiveTemplateLabel();
   updateHistoryButtons();
+  updateSelectionUI();
   const proofreadTab = document.querySelector('.panel-tab[data-right-tab="proofread"]');
   if (proofreadTab && proofreadTab.classList.contains("active")) {
     renderProofread();
@@ -1361,6 +1841,7 @@ function addPage() {
   const newPage = createDefaultPage(`第${newIndex}页`);
   state.pages.push(newPage);
   state.currentPageId = newPage.id;
+  clearSelection();
   renderAll();
 }
 
@@ -1378,6 +1859,7 @@ function duplicatePage() {
   const currentIndex = getPageIndex(currentPage.id);
   state.pages.splice(currentIndex + 1, 0, newPage);
   state.currentPageId = newPage.id;
+  clearSelection();
   renderAll();
 }
 
@@ -1403,12 +1885,14 @@ function deletePage() {
   const currentIndex = getPageIndex(currentPage.id);
   state.pages = state.pages.filter((p) => p.id !== currentPage.id);
   state.currentPageId = state.pages[Math.max(0, currentIndex - 1)].id;
+  clearSelection();
   renderAll();
 }
 
 function switchPage(pageId) {
   if (state.currentPageId === pageId) return;
   state.currentPageId = pageId;
+  clearSelection();
   renderAll();
 }
 
@@ -3055,6 +3539,7 @@ els.paperSize.addEventListener("change", () => {
   }
   currentPage.settings.paperSize = els.paperSize.value;
   currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
+  clearSelection();
   renderAll();
 });
 
@@ -3088,6 +3573,7 @@ els.clearBoardBtn.addEventListener("click", () => {
   if (getCurrentPage().placements.length === 0) return;
   pushHistory();
   getCurrentPage().placements = [];
+  clearSelection();
   renderAll();
 });
 
@@ -3102,6 +3588,50 @@ els.pagesTabs.addEventListener("click", (event) => {
     switchPage(tab.dataset.pageId);
   }
 });
+
+if (els.copySelectionBtn) {
+  els.copySelectionBtn.addEventListener("click", () => {
+    copySelection();
+  });
+}
+
+if (els.pasteSelectionBtn) {
+  els.pasteSelectionBtn.addEventListener("click", () => {
+    if (selectionState.isPasteMode) {
+      endPasteMode();
+    } else {
+      startPasteMode();
+    }
+  });
+}
+
+if (els.moveSelectionBtn) {
+  els.moveSelectionBtn.addEventListener("click", () => {
+    if (selectionState.isMoveMode) {
+      endMoveMode();
+    } else {
+      startMoveMode();
+    }
+  });
+}
+
+if (els.clearSelectionBtn) {
+  els.clearSelectionBtn.addEventListener("click", () => {
+    clearSelectionContent();
+  });
+}
+
+if (els.draftFromSelectionBtn) {
+  els.draftFromSelectionBtn.addEventListener("click", () => {
+    saveDraftFromSelection();
+  });
+}
+
+if (els.cancelSelectionBtn) {
+  els.cancelSelectionBtn.addEventListener("click", () => {
+    clearSelection();
+  });
+}
 
 els.usageTabs.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-usage-tab]");
@@ -3171,6 +3701,88 @@ document.addEventListener("keydown", (event) => {
   if ((modKey && event.shiftKey && event.key.toLowerCase() === "z") || (modKey && event.key.toLowerCase() === "y")) {
     event.preventDefault();
     redo();
+    return;
+  }
+
+  if (modKey && event.key.toLowerCase() === "c") {
+    if (selectionState.selectedCells.size > 0) {
+      event.preventDefault();
+      copySelection();
+      return;
+    }
+  }
+
+  if (modKey && event.key.toLowerCase() === "v") {
+    if (selectionState.clipboard) {
+      event.preventDefault();
+      if (selectionState.isPasteMode) {
+        endPasteMode();
+      } else {
+        startPasteMode();
+      }
+      return;
+    }
+  }
+
+  if (modKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    const { cols, rows } = getGrid();
+    selectCellRange(0, 0, rows - 1, cols - 1, false);
+    return;
+  }
+
+  if (event.key === "Escape") {
+    if (selectionState.isMoveMode) {
+      endMoveMode();
+      return;
+    }
+    if (selectionState.isPasteMode) {
+      endPasteMode();
+      return;
+    }
+    if (selectionState.selectedCells.size > 0) {
+      clearSelection();
+      return;
+    }
+  }
+
+  if (event.key === "Delete" || event.key === "Backspace") {
+    if (selectionState.selectedCells.size > 0) {
+      event.preventDefault();
+      clearSelectionContent();
+      return;
+    }
+  }
+
+  if (selectionState.isMoveMode && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+    event.preventDefault();
+    const bounds = getSelectionBounds();
+    if (!bounds) return;
+
+    let newRow = bounds.minRow;
+    let newCol = bounds.minCol;
+
+    switch (event.key) {
+      case "ArrowUp":
+        newRow = Math.max(0, bounds.minRow - 1);
+        break;
+      case "ArrowDown":
+        newRow = Math.min(getGrid().rows - bounds.rows, bounds.minRow + 1);
+        break;
+      case "ArrowLeft":
+        newCol = Math.max(0, bounds.minCol - 1);
+        break;
+      case "ArrowRight":
+        newCol = Math.min(getGrid().cols - bounds.cols, bounds.minCol + 1);
+        break;
+    }
+
+    if (newRow !== bounds.minRow || newCol !== bounds.minCol) {
+      const check = canMoveSelectionTo(newRow, newCol);
+      if (check.ok && !check.willOverwrite) {
+        moveSelectionTo(newRow, newCol);
+      }
+    }
     return;
   }
 
@@ -3359,11 +3971,196 @@ els.stage.addEventListener("drop", (event) => {
   placeType(Number(cell.dataset.row), Number(cell.dataset.col), event.dataTransfer.getData("text/plain"));
 });
 
-els.stage.addEventListener("click", (event) => {
-  const cell = event.target.closest(".cell");
-  if (!cell) return;
-  placeType(Number(cell.dataset.row), Number(cell.dataset.col));
+let selectionDragState = {
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  startCell: null,
+  additive: false,
+  moved: false
+};
+
+els.stage.addEventListener("mousedown", (event) => {
+  if (event.button !== 0) return;
+
+  if (selectionState.isMoveMode || selectionState.isPasteMode) {
+    return;
+  }
+
+  const cellInfo = getCellFromPoint(event.clientX, event.clientY);
+  if (!cellInfo) return;
+
+  selectionDragState.isDragging = true;
+  selectionDragState.startX = event.clientX;
+  selectionDragState.startY = event.clientY;
+  selectionDragState.startCell = cellInfo;
+  selectionDragState.additive = event.shiftKey;
+  selectionDragState.moved = false;
+
+  if (!event.shiftKey) {
+    selectionState.selectedCells.clear();
+  }
 });
+
+document.addEventListener("mousemove", (event) => {
+  if (!selectionDragState.isDragging) {
+    if (selectionState.isPasteMode) {
+      const cellInfo = getCellFromPoint(event.clientX, event.clientY);
+      if (cellInfo && (!selectionState.pastePreviewCell ||
+          selectionState.pastePreviewCell.row !== cellInfo.row ||
+          selectionState.pastePreviewCell.col !== cellInfo.col)) {
+        selectionState.pastePreviewCell = cellInfo;
+        showPastePreview(cellInfo.row, cellInfo.col);
+      } else if (!cellInfo) {
+        hidePastePreview();
+        selectionState.pastePreviewCell = null;
+      }
+    }
+    return;
+  }
+
+  const dx = event.clientX - selectionDragState.startX;
+  const dy = event.clientY - selectionDragState.startY;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    selectionDragState.moved = true;
+    selectionState.isSelecting = true;
+  }
+
+  if (selectionState.isSelecting) {
+    updateMarquee(selectionDragState.startX, selectionDragState.startY, event.clientX, event.clientY);
+
+    const currentCell = getCellFromPoint(event.clientX, event.clientY);
+    if (currentCell && selectionDragState.startCell) {
+      selectCellRange(
+        selectionDragState.startCell.row,
+        selectionDragState.startCell.col,
+        currentCell.row,
+        currentCell.col,
+        selectionDragState.additive
+      );
+    }
+  }
+});
+
+document.addEventListener("mouseup", (event) => {
+  if (!selectionDragState.isDragging) return;
+
+  const wasSelecting = selectionState.isSelecting;
+
+  selectionDragState.isDragging = false;
+  selectionState.isSelecting = false;
+  hideMarquee();
+
+  if (!wasSelecting && selectionDragState.startCell) {
+    const { row, col } = selectionDragState.startCell;
+    handleStageCellClick(row, col, selectionDragState.additive);
+  }
+
+  selectionDragState.startCell = null;
+});
+
+function handleStageCellClick(row, col, additive) {
+  if (selectionState.isMoveMode) {
+    const check = canMoveSelectionTo(row, col);
+    if (!check.ok) {
+      alert(check.reason);
+      return;
+    }
+    if (check.willOverwrite) {
+      if (!confirm(`移动后会覆盖 ${check.overwrittenCount} 个已有落字，是否继续？`)) return;
+    }
+    moveSelectionTo(row, col);
+    return;
+  }
+
+  if (selectionState.isPasteMode) {
+    const check = canPasteSelection(row, col);
+    if (!check.ok) {
+      if (check.shortages) {
+        const shortageText = check.shortages.map(s => `${s.char}(${s.style}): 需要${s.needed}，可用${s.available}`).join("\n");
+        alert(`${check.reason}：\n${shortageText}`);
+      } else {
+        alert(check.reason);
+      }
+      return;
+    }
+    if (check.willOverwrite) {
+      if (!confirm(`粘贴后会覆盖 ${check.overwrittenCount} 个已有落字，是否继续？`)) return;
+    }
+    pasteSelection(row, col);
+    return;
+  }
+
+  if (additive) {
+    const key = placementKey(row, col);
+    if (selectionState.selectedCells.has(key)) {
+      selectionState.selectedCells.delete(key);
+    } else {
+      selectionState.selectedCells.add(key);
+    }
+    updateSelectionUI();
+    renderStageSelection();
+    return;
+  }
+
+  if (selectionState.selectedCells.size > 0) {
+    clearSelection();
+  }
+
+  placeType(row, col);
+}
+
+function canMoveSelectionTo(targetRow, targetCol) {
+  if (!selectionState.isMoveMode || selectionState.moveOriginalPlacements.length === 0) {
+    return { ok: false, reason: "未处于移动模式或选区内无落字" };
+  }
+
+  const bounds = getSelectionBounds();
+  if (!bounds) return { ok: false, reason: "没有选区" };
+
+  const offsetRow = targetRow - bounds.minRow;
+  const offsetCol = targetCol - bounds.minCol;
+
+  const { cols, rows } = getGrid();
+  const outOfBounds = selectionState.moveOriginalPlacements.some((p) => {
+    const r = p.row + offsetRow;
+    const c = p.col + offsetCol;
+    return r < 0 || r >= rows || c < 0 || c >= cols;
+  });
+
+  if (outOfBounds) {
+    return { ok: false, reason: "移动位置越界" };
+  }
+
+  const currentPage = getCurrentPage();
+  const originalKeys = new Set(
+    selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col))
+  );
+
+  const targetPlacements = selectionState.moveOriginalPlacements.map((p) => ({
+    row: p.row + offsetRow,
+    col: p.col + offsetCol,
+    typeId: p.typeId
+  }));
+
+  const targetKeys = new Set(targetPlacements.map((p) => placementKey(p.row, p.col)));
+
+  const hasCollision = currentPage.placements.some((pl) => {
+    const key = placementKey(pl.row, pl.col);
+    return targetKeys.has(key) && !originalKeys.has(key);
+  });
+
+  const overwrittenCount = currentPage.placements.filter((pl) => {
+    const key = placementKey(pl.row, pl.col);
+    return targetKeys.has(key) && !originalKeys.has(key);
+  }).length;
+
+  return {
+    ok: true,
+    willOverwrite: hasCollision,
+    overwrittenCount
+  };
+}
 
 els.draftList.addEventListener("click", (event) => {
   const loadButton = event.target.closest("[data-load-draft]");
@@ -3403,6 +4200,7 @@ els.draftList.addEventListener("click", (event) => {
       state.exportSettings = structuredClone(draft.exportSettings);
     }
 
+    clearSelection();
     renderAll();
   }
   if (deleteButton) {
