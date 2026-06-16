@@ -2,6 +2,13 @@ const storageKey = "zfl16-movable-type-workshop";
 const archiveStorageKey = "zfl16-movable-type-archive";
 const archiveMetaKey = "zfl16-movable-type-archive-meta";
 
+const printPreviewDefaults = {
+  paperColor: "#fffaf1",
+  inkDepth: 70,
+  showBorder: true,
+  showInnerGrid: false
+};
+
 const archiveStore = {
   works: {},
   currentWorkId: null,
@@ -32,12 +39,7 @@ function createDefaultWorkState() {
     currentPageId: firstPage.id,
     pages: [firstPage],
     usageTab: "current",
-    exportSettings: {
-      paperColor: "#fffaf1",
-      inkDepth: 70,
-      showBorder: true,
-      showInnerGrid: false
-    }
+    exportSettings: structuredClone(printPreviewDefaults)
   };
 }
 
@@ -99,12 +101,7 @@ function loadWorkFromArchive(workId) {
     }
     if (!newState.usageTab) newState.usageTab = "current";
     if (!newState.exportSettings) {
-      newState.exportSettings = {
-        paperColor: "#fffaf1",
-        inkDepth: 70,
-        showBorder: true,
-        showInnerGrid: false
-      };
+      newState.exportSettings = structuredClone(printPreviewDefaults);
     }
     return newState;
   } catch {
@@ -165,12 +162,7 @@ function migrateLegacyDataIfNeeded() {
     }
     if (!workState.usageTab) workState.usageTab = "current";
     if (!workState.exportSettings) {
-      workState.exportSettings = {
-        paperColor: "#fffaf1",
-        inkDepth: 70,
-        showBorder: true,
-        showInnerGrid: false
-      };
+      workState.exportSettings = structuredClone(printPreviewDefaults);
     }
   } catch {
     return false;
@@ -619,12 +611,7 @@ const defaultState = {
   currentPageId: null,
   pages: [],
   usageTab: "current",
-  exportSettings: {
-    paperColor: "#fffaf1",
-    inkDepth: 70,
-    showBorder: true,
-    showInnerGrid: false
-  }
+  exportSettings: structuredClone(printPreviewDefaults)
 };
 
 let state = initializeArchive();
@@ -1330,12 +1317,7 @@ function loadState() {
     }
 
     if (!newState.exportSettings) {
-      newState.exportSettings = {
-        paperColor: "#fffaf1",
-        inkDepth: 70,
-        showBorder: true,
-        showInnerGrid: false
-      };
+      newState.exportSettings = structuredClone(printPreviewDefaults);
     }
 
     return newState;
@@ -2101,13 +2083,6 @@ const exportSizeLimits = {
   minSide: 320,
   maxSide: 2400,
   maxPixels: 4000000
-};
-
-const printPreviewDefaults = {
-  paperColor: "#fffaf1",
-  inkDepth: 70,
-  showBorder: true,
-  showInnerGrid: false
 };
 
 let printPreviewState = { ...printPreviewDefaults, currentPageId: null };
