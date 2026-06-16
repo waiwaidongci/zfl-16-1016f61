@@ -1,4 +1,531 @@
 const storageKey = "zfl16-movable-type-workshop";
+const archiveStorageKey = "zfl16-movable-type-archive";
+const archiveMetaKey = "zfl16-movable-type-archive-meta";
+
+const archiveStore = {
+  works: {},
+  currentWorkId: null,
+  currentView: "editor",
+  searchQuery: "",
+  filterMode: "active"
+};
+
+function createWorkMetadata(name) {
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    name: name || "未命名作品",
+    createdAt: now,
+    updatedAt: now,
+    archived: false
+  };
+}
+
+function createDefaultWorkState() {
+  const firstPage = createDefaultPage("第1页");
+  return {
+    inventory: structuredClone(starterInventory),
+    selectedTypeId: starterInventory[0].id,
+    drafts: [],
+    workTitle: "晚风小笺",
+    currentPageId: firstPage.id,
+    pages: [firstPage],
+    usageTab: "current"
+  };
+}
+
+function saveArchiveMeta() {
+  const meta = {
+    currentWorkId: archiveStore.currentWorkId,
+    version: 1
+  };
+  localStorage.setItem(archiveMetaKey, JSON.stringify(meta));
+}
+
+function loadArchiveMeta() {
+  const saved = localStorage.getItem(archiveMetaKey);
+  if (!saved) return null;
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkToArchive(workId, workState) {
+  if (!workId) return;
+  const meta = archiveStore.works[workId];
+  if (meta) {
+    meta.updatedAt = Date.now();
+    if (workState.workTitle && workState.workTitle.trim()) {
+      meta.name = workState.workTitle;
+    }
+  }
+  localStorage.setItem(`${archiveStorageKey}-${workId}`, JSON.stringify(workState));
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+}
+
+function loadWorkFromArchive(workId) {
+  const saved = localStorage.getItem(`${archiveStorageKey}-${workId}`);
+  if (!saved) return null;
+  try {
+    const parsed = JSON.parse(saved);
+    const newState = { ...structuredClone(defaultState), ...parsed };
+    if (!newState.pages || newState.pages.length === 0) {
+      const migratedPage = createDefaultPage("第1页");
+      if (parsed.settings) {
+        migratedPage.settings = {
+          paperSize: parsed.settings.paperSize || "postcard",
+          flowMode: parsed.settings.flowMode || "horizontal",
+          gridGap: parsed.settings.gridGap || 8
+        };
+        newState.workTitle = parsed.settings.workTitle || "晚风小笺";
+      }
+      if (parsed.placements) {
+        migratedPage.placements = parsed.placements;
+      }
+      if (parsed.activeTemplateId !== undefined) {
+        migratedPage.activeTemplateId = parsed.activeTemplateId;
+      }
+      newState.pages = [migratedPage];
+      newState.currentPageId = migratedPage.id;
+    }
+    if (!newState.usageTab) newState.usageTab = "current";
+    return newState;
+  } catch {
+    return null;
+  }
+}
+
+function deleteWorkFromArchive(workId) {
+  delete archiveStore.works[workId];
+  localStorage.removeItem(`${archiveStorageKey}-${workId}`);
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  if (archiveStore.currentWorkId === workId) {
+    archiveStore.currentWorkId = null;
+    saveArchiveMeta();
+  }
+}
+
+function loadArchiveWorksIndex() {
+  const saved = localStorage.getItem(archiveStorageKey);
+  if (!saved) return {};
+  try {
+    const parsed = JSON.parse(saved);
+    return parsed.works || {};
+  } catch {
+    return {};
+  }
+}
+
+function migrateLegacyDataIfNeeded() {
+  const legacyData = localStorage.getItem(storageKey);
+  const archiveExists = localStorage.getItem(archiveStorageKey);
+  
+  if (!legacyData) return false;
+  if (archiveExists) return false;
+
+  let workState;
+  try {
+    const parsed = JSON.parse(legacyData);
+    workState = { ...structuredClone(defaultState), ...parsed };
+    if (!workState.pages || workState.pages.length === 0) {
+      const migratedPage = createDefaultPage("第1页");
+      if (parsed.settings) {
+        migratedPage.settings = {
+          paperSize: parsed.settings.paperSize || "postcard",
+          flowMode: parsed.settings.flowMode || "horizontal",
+          gridGap: parsed.settings.gridGap || 8
+        };
+        workState.workTitle = parsed.settings.workTitle || "晚风小笺";
+      }
+      if (parsed.placements) {
+        migratedPage.placements = parsed.placements;
+      }
+      if (parsed.activeTemplateId !== undefined) {
+        migratedPage.activeTemplateId = parsed.activeTemplateId;
+      }
+      workState.pages = [migratedPage];
+      workState.currentPageId = migratedPage.id;
+    }
+    if (!workState.usageTab) workState.usageTab = "current";
+  } catch {
+    return false;
+  }
+
+  const workName = (workState.workTitle && workState.workTitle.trim()) ? workState.workTitle : "我的作品";
+  const metadata = createWorkMetadata(workName);
+  const workId = metadata.id;
+
+  archiveStore.works[workId] = metadata;
+  archiveStore.currentWorkId = workId;
+
+  localStorage.setItem(`${archiveStorageKey}-${workId}`, JSON.stringify(workState));
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  saveArchiveMeta();
+
+  return true;
+}
+
+function initializeArchive() {
+  archiveStore.works = loadArchiveWorksIndex();
+  const meta = loadArchiveMeta();
+
+  const migrated = migrateLegacyDataIfNeeded();
+
+  if (Object.keys(archiveStore.works).length === 0) {
+    const defaultStateWork = createDefaultWorkState();
+    const metadata = createWorkMetadata(defaultStateWork.workTitle);
+    const workId = metadata.id;
+    archiveStore.works[workId] = metadata;
+    archiveStore.currentWorkId = workId;
+    localStorage.setItem(`${archiveStorageKey}-${workId}`, JSON.stringify(defaultStateWork));
+    localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+    saveArchiveMeta();
+    return defaultStateWork;
+  }
+
+  let workId = meta?.currentWorkId;
+  if (!workId || !archiveStore.works[workId]) {
+    const nonArchived = Object.values(archiveStore.works).find(w => !w.archived);
+    workId = nonArchived ? nonArchived.id : Object.keys(archiveStore.works)[0];
+    archiveStore.currentWorkId = workId;
+    saveArchiveMeta();
+  }
+
+  return loadWorkFromArchive(archiveStore.currentWorkId) || createDefaultWorkState();
+}
+
+function saveCurrentWork() {
+  if (!archiveStore.currentWorkId) return;
+  saveWorkToArchive(archiveStore.currentWorkId, state);
+}
+
+function switchToWork(workId) {
+  if (!archiveStore.works[workId]) return;
+  saveCurrentWork();
+  archiveStore.currentWorkId = workId;
+  saveArchiveMeta();
+  const loaded = loadWorkFromArchive(workId);
+  if (loaded) {
+    state = loaded;
+    historyStack = [];
+    redoStack = [];
+    if (state.pages.length === 0) {
+      const firstPage = createDefaultPage();
+      state.pages.push(firstPage);
+      state.currentPageId = firstPage.id;
+    }
+    saveState();
+    renderAll();
+  }
+  switchView("editor");
+}
+
+function createNewWork(name) {
+  const newState = createDefaultWorkState();
+  if (name && name.trim()) {
+    newState.workTitle = name.trim();
+  }
+  const metadata = createWorkMetadata(newState.workTitle);
+  const workId = metadata.id;
+  archiveStore.works[workId] = metadata;
+  localStorage.setItem(`${archiveStorageKey}-${workId}`, JSON.stringify(newState));
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  switchToWork(workId);
+}
+
+function duplicateWork(workId) {
+  const sourceMeta = archiveStore.works[workId];
+  if (!sourceMeta) return;
+  const sourceState = loadWorkFromArchive(workId);
+  if (!sourceState) return;
+
+  const newState = structuredClone(sourceState);
+  newState.pages.forEach(page => {
+    page.id = crypto.randomUUID();
+    page.placements = page.placements.map(p => ({ ...p }));
+  });
+  if (newState.pages.length > 0) {
+    newState.currentPageId = newState.pages[0].id;
+  }
+  newState.inventory = newState.inventory.map(item => ({
+    ...item,
+    id: crypto.randomUUID()
+  }));
+  if (newState.inventory.length > 0) {
+    newState.selectedTypeId = newState.inventory[0].id;
+  }
+  newState.drafts = (newState.drafts || []).map(d => ({
+    ...d,
+    id: crypto.randomUUID()
+  }));
+
+  const copyName = `${sourceMeta.name} (副本)`;
+  newState.workTitle = copyName;
+  const metadata = createWorkMetadata(copyName);
+  const newWorkId = metadata.id;
+  archiveStore.works[newWorkId] = metadata;
+  localStorage.setItem(`${archiveStorageKey}-${newWorkId}`, JSON.stringify(newState));
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  renderArchiveView();
+}
+
+function toggleArchiveWork(workId) {
+  const meta = archiveStore.works[workId];
+  if (!meta) return;
+  meta.archived = !meta.archived;
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  renderArchiveView();
+}
+
+function renameWork(workId, newName) {
+  const meta = archiveStore.works[workId];
+  if (!meta || !newName || !newName.trim()) return;
+  meta.name = newName.trim();
+  localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+  if (workId === archiveStore.currentWorkId) {
+    state.workTitle = newName.trim();
+    saveState();
+    renderAll();
+  }
+  renderArchiveView();
+}
+
+function getFilteredWorks() {
+  const query = archiveStore.searchQuery.trim().toLowerCase();
+  let works = Object.values(archiveStore.works);
+  if (archiveStore.filterMode === "active") {
+    works = works.filter(w => !w.archived);
+  } else if (archiveStore.filterMode === "archived") {
+    works = works.filter(w => w.archived);
+  }
+  if (query) {
+    works = works.filter(w => w.name.toLowerCase().includes(query));
+  }
+  return works.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function formatDate(timestamp) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "刚刚";
+  if (diffMins < 60) return `${diffMins}分钟前`;
+  if (diffHours < 24) return `${diffHours}小时前`;
+  if (diffDays < 7) return `${diffDays}天前`;
+  return date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+}
+
+function getWorkStats(workId) {
+  const workState = loadWorkFromArchive(workId);
+  if (!workState) return { pages: 0, chars: 0, types: 0, drafts: 0 };
+  const totalPlacements = workState.pages.reduce((sum, p) => sum + p.placements.length, 0);
+  return {
+    pages: workState.pages.length,
+    chars: totalPlacements,
+    types: workState.inventory.length,
+    drafts: (workState.drafts || []).length
+  };
+}
+
+function renderArchiveView() {
+  const works = getFilteredWorks();
+  const gridEl = document.getElementById("archiveGrid");
+  const emptyEl = document.getElementById("archiveEmpty");
+  if (!gridEl || !emptyEl) return;
+
+  if (works.length === 0) {
+    gridEl.hidden = true;
+    emptyEl.hidden = false;
+    emptyEl.querySelector("h3").textContent =
+      archiveStore.searchQuery ? "没有找到匹配的作品" :
+      archiveStore.filterMode === "archived" ? "还没有归档的作品" : "还没有作品";
+    emptyEl.querySelector("p").textContent =
+      archiveStore.searchQuery ? "试试换个关键词搜索吧" :
+      archiveStore.filterMode === "archived" ? "在「进行中」列表中归档作品后，可以在这里找到" : "点击上方「新建作品」创建你的第一个活字排版作品";
+    return;
+  }
+
+  gridEl.hidden = false;
+  emptyEl.hidden = true;
+
+  gridEl.innerHTML = works.map(work => {
+    const stats = getWorkStats(work.id);
+    const isCurrent = work.id === archiveStore.currentWorkId;
+    return `
+      <article class="work-card ${work.archived ? "archived" : ""} ${isCurrent ? "current" : ""}" data-work-id="${work.id}">
+        <div class="work-card-head">
+          <h3 class="work-card-title">${escapeHtml(work.name)}</h3>
+          ${work.archived ? '<span class="work-card-badge archived-badge">已归档</span>' : ""}
+          ${isCurrent ? '<span class="work-card-badge current-badge">编辑中</span>' : ""}
+        </div>
+        <div class="work-card-stats">
+          <div class="work-card-stat">
+            <span class="work-card-stat-label">页面</span>
+            <span class="work-card-stat-value">${stats.pages}</span>
+          </div>
+          <div class="work-card-stat">
+            <span class="work-card-stat-label">落字</span>
+            <span class="work-card-stat-value">${stats.chars}</span>
+          </div>
+          <div class="work-card-stat">
+            <span class="work-card-stat-label">字模</span>
+            <span class="work-card-stat-value">${stats.types}</span>
+          </div>
+          <div class="work-card-stat">
+            <span class="work-card-stat-label">草稿</span>
+            <span class="work-card-stat-value">${stats.drafts}</span>
+          </div>
+        </div>
+        <div class="work-card-time">
+          <span>更新于 ${formatDate(work.updatedAt)}</span>
+        </div>
+        <div class="work-card-actions">
+          <button class="work-card-btn primary" data-action="edit" type="button">编辑</button>
+          <button class="work-card-btn" data-action="duplicate" type="button">复制</button>
+          <button class="work-card-btn" data-action="rename" type="button">改名</button>
+          <button class="work-card-btn ${work.archived ? "" : "warn"}" data-action="toggleArchive" type="button">
+            ${work.archived ? "取消归档" : "归档"}
+          </button>
+          <button class="work-card-btn danger" data-action="delete" type="button">删除</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function switchView(view) {
+  archiveStore.currentView = view;
+  const archiveView = document.getElementById("archiveView");
+  const editorView = document.getElementById("editorView");
+  const toggleBtn = document.getElementById("viewToggleArchive");
+  if (!archiveView || !editorView || !toggleBtn) return;
+
+  if (view === "archive") {
+    saveCurrentWork();
+    archiveView.hidden = false;
+    editorView.hidden = true;
+    toggleBtn.textContent = "✎ 返回编辑";
+    toggleBtn.title = "返回编辑器";
+    toggleBtn.classList.add("active");
+    renderArchiveView();
+  } else {
+    archiveView.hidden = true;
+    editorView.hidden = false;
+    toggleBtn.textContent = "📚 作品档案";
+    toggleBtn.title = "切换到作品档案";
+    toggleBtn.classList.remove("active");
+  }
+}
+
+let workNameModalState = { mode: "create", targetWorkId: null };
+
+function openWorkNameModal(mode, targetWorkId = null) {
+  workNameModalState = { mode, targetWorkId };
+  const modal = document.getElementById("workNameModal");
+  const title = document.getElementById("workNameModalTitle");
+  const input = document.getElementById("workNameInput");
+  const confirmBtn = document.getElementById("workNameModalConfirm");
+  if (!modal || !title || !input || !confirmBtn) return;
+
+  if (mode === "create") {
+    title.textContent = "新建作品";
+    input.value = "";
+    input.placeholder = "请输入作品名称...";
+  } else if (mode === "rename") {
+    title.textContent = "重命名作品";
+    const meta = archiveStore.works[targetWorkId];
+    input.value = meta ? meta.name : "";
+    input.placeholder = "请输入新的作品名称...";
+  }
+  confirmBtn.disabled = !input.value.trim();
+  modal.hidden = false;
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeWorkNameModal() {
+  const modal = document.getElementById("workNameModal");
+  if (modal) modal.hidden = true;
+  workNameModalState = { mode: "create", targetWorkId: null };
+}
+
+function confirmWorkNameModal() {
+  const input = document.getElementById("workNameInput");
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) return;
+
+  if (workNameModalState.mode === "create") {
+    createNewWork(name);
+  } else if (workNameModalState.mode === "rename") {
+    renameWork(workNameModalState.targetWorkId, name);
+  }
+  closeWorkNameModal();
+}
+
+function handleArchiveCardClick(event) {
+  const card = event.target.closest("[data-work-id]");
+  if (!card) return;
+  const workId = card.dataset.workId;
+  const actionBtn = event.target.closest("[data-action]");
+  if (!actionBtn) {
+    switchToWork(workId);
+    return;
+  }
+  const action = actionBtn.dataset.action;
+  switch (action) {
+    case "edit":
+      switchToWork(workId);
+      break;
+    case "duplicate":
+      if (confirm(`确定要复制作品「${archiveStore.works[workId]?.name || ""}」吗？`)) {
+        duplicateWork(workId);
+      }
+      break;
+    case "rename":
+      openWorkNameModal("rename", workId);
+      break;
+    case "toggleArchive": {
+      const meta = archiveStore.works[workId];
+      if (meta && meta.archived) {
+        toggleArchiveWork(workId);
+      } else {
+        if (confirm(`确定要归档作品「${meta?.name || ""}」吗？归档后可以在「已归档」列表中找到。`)) {
+          toggleArchiveWork(workId);
+        }
+      }
+      break;
+    }
+    case "delete":
+      if (confirm(`⚠ 确定要永久删除作品「${archiveStore.works[workId]?.name || ""}」吗？此操作不可恢复！`)) {
+        deleteWorkFromArchive(workId);
+        if (archiveStore.currentWorkId === null && Object.keys(archiveStore.works).length > 0) {
+          const firstWork = Object.values(archiveStore.works).find(w => !w.archived) || Object.values(archiveStore.works)[0];
+          switchToWork(firstWork.id);
+        } else if (Object.keys(archiveStore.works).length === 0) {
+          const newState = createDefaultWorkState();
+          const metadata = createWorkMetadata(newState.workTitle);
+          const newId = metadata.id;
+          archiveStore.works[newId] = metadata;
+          archiveStore.currentWorkId = newId;
+          localStorage.setItem(`${archiveStorageKey}-${newId}`, JSON.stringify(newState));
+          localStorage.setItem(archiveStorageKey, JSON.stringify({ works: archiveStore.works }));
+          saveArchiveMeta();
+          state = newState;
+          historyStack = [];
+          redoStack = [];
+          saveState();
+          renderAll();
+        }
+        renderArchiveView();
+      }
+      break;
+  }
+}
 
 const starterInventory = [
   { id: crypto.randomUUID(), char: "山", style: "宋体旧字", size: 30, quantity: 4, wear: "微磨" },
@@ -33,7 +560,7 @@ const defaultState = {
   usageTab: "current"
 };
 
-let state = loadState();
+let state = initializeArchive();
 
 const MAX_HISTORY = 50;
 let historyStack = [];
@@ -262,6 +789,7 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+  saveCurrentWork();
 }
 
 function getGrid(paperSize = getPageSettings().paperSize) {
@@ -375,8 +903,8 @@ function renderStage() {
       const inTemplate = templatePositions?.has(key);
       const templateCellClass = templatePositions ? (inTemplate ? "template-cell" : "non-template-cell") : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
-          ${type ? escapeHtml(type.char) : ""}
+        <button class="cell ${type ? 'used' : ''} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+          ${type ? escapeHtml(type.char) : ''}
         </button>
       `);
     }
@@ -2799,6 +3327,78 @@ els.draftList.addEventListener("click", (event) => {
   if (deleteButton) {
     state.drafts = state.drafts.filter((item) => item.id !== deleteButton.dataset.deleteDraft);
     renderAll();
+  }
+});
+
+const viewToggleBtn = document.getElementById("viewToggleArchive");
+if (viewToggleBtn) {
+  viewToggleBtn.addEventListener("click", () => {
+    const nextView = archiveStore.currentView === "editor" ? "archive" : "editor";
+    switchView(nextView);
+  });
+}
+
+const newWorkBtn = document.getElementById("newWorkBtn");
+if (newWorkBtn) {
+  newWorkBtn.addEventListener("click", () => openWorkNameModal("create"));
+}
+
+const archiveGrid = document.getElementById("archiveGrid");
+if (archiveGrid) {
+  archiveGrid.addEventListener("click", handleArchiveCardClick);
+}
+
+const archiveSearch = document.getElementById("archiveSearch");
+if (archiveSearch) {
+  archiveSearch.addEventListener("input", (e) => {
+    archiveStore.searchQuery = e.target.value;
+    renderArchiveView();
+  });
+}
+
+const archiveFilterTabs = document.querySelectorAll("[data-archive-filter]");
+archiveFilterTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    archiveFilterTabs.forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    archiveStore.filterMode = tab.dataset.archiveFilter;
+    renderArchiveView();
+  });
+});
+
+const workNameModalClose = document.getElementById("workNameModalClose");
+if (workNameModalClose) workNameModalClose.addEventListener("click", closeWorkNameModal);
+
+const workNameModalCancel = document.getElementById("workNameModalCancel");
+if (workNameModalCancel) workNameModalCancel.addEventListener("click", closeWorkNameModal);
+
+const workNameModalConfirm = document.getElementById("workNameModalConfirm");
+if (workNameModalConfirm) workNameModalConfirm.addEventListener("click", confirmWorkNameModal);
+
+const workNameInput = document.getElementById("workNameInput");
+if (workNameInput) {
+  workNameInput.addEventListener("input", (e) => {
+    if (workNameModalConfirm) {
+      workNameModalConfirm.disabled = !e.target.value.trim();
+    }
+  });
+  workNameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && workNameModalConfirm && !workNameModalConfirm.disabled) {
+      confirmWorkNameModal();
+    }
+  });
+}
+
+const workNameModal = document.getElementById("workNameModal");
+if (workNameModal) {
+  workNameModal.addEventListener("click", (e) => {
+    if (e.target === workNameModal) closeWorkNameModal();
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && workNameModal && !workNameModal.hidden) {
+    closeWorkNameModal();
   }
 });
 

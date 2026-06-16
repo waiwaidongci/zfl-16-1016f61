@@ -14,6 +14,8 @@
           <h1>活字排版工坊</h1>
         </div>
         <div class="top-actions">
+          <button id="viewToggleArchive" class="archive-toggle" title="切换到作品档案">📚 作品档案</button>
+          <div class="divider-v"></div>
           <button id="undoBtn" class="history-btn" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
           <button id="redoBtn" class="history-btn" title="重做 (Ctrl+Y)" disabled>↷ 重做</button>
           <div class="divider-v"></div>
@@ -26,6 +28,34 @@
           <button id="clearBoardBtn">清空版面</button>
         </div>
       </header>
+
+      <section id="archiveView" class="archive-view" hidden>
+        <div class="archive-header">
+          <div>
+            <h2>作品档案库</h2>
+            <p class="archive-subtitle">管理你的所有活字排版作品</p>
+          </div>
+          <div class="archive-header-actions">
+            <div class="archive-search-wrap">
+              <input id="archiveSearch" type="search" placeholder="搜索作品名..." />
+            </div>
+            <div class="archive-filter-tabs">
+              <button class="archive-filter-tab active" data-archive-filter="active" type="button">进行中</button>
+              <button class="archive-filter-tab" data-archive-filter="archived" type="button">已归档</button>
+              <button class="archive-filter-tab" data-archive-filter="all" type="button">全部</button>
+            </div>
+            <button id="newWorkBtn" class="primary" type="button">+ 新建作品</button>
+          </div>
+        </div>
+        <div id="archiveGrid" class="archive-grid"></div>
+        <div id="archiveEmpty" class="archive-empty" hidden>
+          <div class="archive-empty-icon">📝</div>
+          <h3>还没有作品</h3>
+          <p>点击上方「新建作品」创建你的第一个活字排版作品</p>
+        </div>
+      </section>
+
+      <section id="editorView" class="editor-view">
 
       <section class="settings-bar" aria-label="版面设置">
         <label>
@@ -152,7 +182,27 @@
           </div>
         </aside>
       </section>
+      </section>
     </main>
+
+    <div id="workNameModal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-head">
+          <h2 id="workNameModalTitle">新建作品</h2>
+          <button id="workNameModalClose" class="mini-btn" type="button">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="tl-input-label">
+            作品名称
+            <input id="workNameInput" type="text" placeholder="请输入作品名称..." maxlength="50" />
+          </label>
+        </div>
+        <div class="modal-foot">
+          <button id="workNameModalCancel" type="button">取消</button>
+          <button id="workNameModalConfirm" class="primary" type="button" disabled>确认</button>
+        </div>
+      </div>
+    </div>
 
     <div id="textLayoutModal" class="modal-overlay" hidden>
       <div class="modal">
