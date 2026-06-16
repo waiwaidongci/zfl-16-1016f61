@@ -727,7 +727,7 @@ function updateSelectionUI() {
     ? selectionState.clipboard.placements.length
     : 0;
   if (els.selectionToolbar) {
-    els.selectionToolbar.hidden = count === 0 && !selectionState.isPasteMode;
+    els.selectionToolbar.hidden = count === 0 && !selectionState.isPasteMode && !selectionState.clipboard;
   }
   if (els.selectionInfo) {
     if (selectionState.isPasteMode) {
@@ -832,12 +832,13 @@ function hideMarquee() {
 }
 
 function showPastePreview(row, col) {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements) return;
+  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return;
 
   hidePastePreview();
 
   const check = canPasteSelection(row, col);
-  const { pasteablePlacements, invalidPlacements } = check;
+  const pasteablePlacements = check.pasteablePlacements || [];
+  const invalidPlacements = check.invalidPlacements || [];
 
   pasteablePlacements.forEach((p) => {
     const r = row + p.offsetRow;
@@ -885,12 +886,15 @@ function hidePastePreview() {
     cell.classList.remove("paste-preview", "paste-preview-invalid", "paste-preview-template-blocked");
   });
   if (els.selectionInfo && selectionState.isPasteMode) {
-    els.selectionInfo.textContent = "粘贴模式：点击格子选择粘贴位置";
+    const clipboardCount = selectionState.clipboard && selectionState.clipboard.placements
+      ? selectionState.clipboard.placements.length
+      : 0;
+    els.selectionInfo.textContent = `粘贴模式：剪贴板 ${clipboardCount} 个字，点击格子选择粘贴位置`;
   }
 }
 
 function startPasteMode() {
-  if (!selectionState.clipboard) return;
+  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return;
   selectionState.isPasteMode = true;
   selectionState.isMoveMode = false;
   selectionState.pastePreviewCell = null;
@@ -926,6 +930,11 @@ function copySelection() {
     }
   }
 
+  if (clipboard.length === 0) {
+    alert("选区内没有落字，无法复制");
+    return;
+  }
+
   selectionState.clipboard = {
     placements: clipboard,
     bounds: { rows: bounds.rows, cols: bounds.cols }
@@ -936,7 +945,7 @@ function copySelection() {
 
 function canPasteSelection(targetRow, targetCol) {
   if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) {
-    return { ok: false, reason: "剪贴板为空", totalCount: 0, pasteableCount: 0 };
+    return { ok: false, reason: "剪贴板为空", totalCount: 0, pasteableCount: 0, pasteablePlacements: [], invalidPlacements: [] };
   }
 
   const { cols, rows } = getGrid();
