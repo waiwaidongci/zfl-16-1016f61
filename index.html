@@ -204,6 +204,20 @@
               </div>
             </div>
             <div class="proofread-summary" id="proofreadSummary"></div>
+            <div class="proofread-filter-bar" id="proofreadFilterBar">
+              <button class="proofread-filter-btn active" data-filter-category="all" type="button">全部</button>
+              <button class="proofread-filter-btn" data-filter-category="shortage" type="button">库存超量</button>
+              <button class="proofread-filter-btn" data-filter-category="blank" type="button">空白过多</button>
+              <button class="proofread-filter-btn" data-filter-category="duplicate" type="button">连续重复</button>
+              <button class="proofread-filter-btn" data-filter-category="edge" type="button">边缘过密</button>
+              <button class="proofread-filter-btn" data-filter-category="empty-title" type="button">标题为空</button>
+              <button class="proofread-filter-btn" data-filter-category="export-size" type="button">导出尺寸异常</button>
+            </div>
+            <div class="proofread-nav-bar" id="proofreadNavBar" hidden>
+              <span class="proofread-nav-info" id="proofreadNavInfo"></span>
+              <button id="proofreadPrevBtn" class="mini-btn" type="button">上一处</button>
+              <button id="proofreadNextBtn" class="mini-btn primary" type="button">下一处</button>
+            </div>
             <div class="proofread-issues" id="proofreadIssues"></div>
           </div>
         </aside>

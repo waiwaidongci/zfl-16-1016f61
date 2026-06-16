@@ -1968,6 +1968,7 @@ function renderAll() {
   renderInventory();
   renderPages();
   renderStage();
+  restoreProofreadHighlights();
   renderStageSelection();
   renderUsage();
   renderDrafts();
@@ -1976,7 +1977,11 @@ function renderAll() {
   updateSelectionUI();
   const proofreadTab = document.querySelector('.panel-tab[data-right-tab="proofread"]');
   if (proofreadTab && proofreadTab.classList.contains("active")) {
-    renderProofread();
+    if (cachedProofreadIssues) {
+      refreshProofreadFromCache();
+    } else {
+      renderProofread();
+    }
   }
 }
 
@@ -2671,6 +2676,7 @@ function getTemplatePositions(templateId, paperSize) {
 }
 
 let proofreadHighlightTimer = null;
+let activeProofreadHighlight = null;
 
 function clearProofreadHighlights() {
   document.querySelectorAll(".cell.proofread-highlight, .cell.proofread-highlight-warning").forEach((cell) => {
@@ -2680,16 +2686,47 @@ function clearProofreadHighlights() {
     clearTimeout(proofreadHighlightTimer);
     proofreadHighlightTimer = null;
   }
+  activeProofreadHighlight = null;
+}
+
+function restoreProofreadHighlights() {
+  if (!activeProofreadHighlight) return;
+  const { cells, warning } = activeProofreadHighlight;
+  const className = warning ? "proofread-highlight-warning" : "proofread-highlight";
+  let firstVisibleCell = null;
+  cells.forEach(({ row, col, pageId }) => {
+    if (pageId !== state.currentPageId) return;
+    const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+    if (cell) {
+      cell.classList.add(className);
+      if (!firstVisibleCell) firstVisibleCell = cell;
+    }
+  });
+  if (firstVisibleCell) {
+    firstVisibleCell.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  }
+  if (proofreadHighlightTimer) {
+    clearTimeout(proofreadHighlightTimer);
+  }
+  proofreadHighlightTimer = setTimeout(() => {
+    clearProofreadHighlights();
+  }, 4000);
 }
 
 function highlightCells(cells, warning = false) {
   clearProofreadHighlights();
   const className = warning ? "proofread-highlight-warning" : "proofread-highlight";
-  cells.forEach(({ row, col, pageId }) => {
-    if (pageId && pageId !== state.currentPageId) {
-      switchPage(pageId);
-    }
-    requestAnimationFrame(() => {
+  activeProofreadHighlight = { cells, warning };
+  const firstCell = cells[0];
+  const needsPageSwitch = firstCell && firstCell.pageId && firstCell.pageId !== state.currentPageId;
+  if (needsPageSwitch) {
+    state.currentPageId = firstCell.pageId;
+    clearSelection();
+    renderAll();
+    return;
+  }
+  requestAnimationFrame(() => {
+    cells.forEach(({ row, col }) => {
       const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
       if (cell) {
         cell.classList.add(className);
@@ -2718,6 +2755,7 @@ function checkInventoryShortage() {
       issues.push({
         id: `shortage-${typeId}`,
         type: "error",
+        category: "shortage",
         title: `字模「${item.char}·${item.style}」超量`,
         desc: `当前共使用 ${totalUsage[typeId]} 枚，库存仅有 ${item.quantity} 枚，超出 ${totalUsage[typeId] - item.quantity} 枚。`,
         locations,
@@ -2740,6 +2778,7 @@ function checkExcessiveBlanks() {
       issues.push({
         id: `blank-${page.id}`,
         type: "warning",
+        category: "blank",
         title: `页面「${page.name}」空白过多`,
         desc: `版面共 ${totalCells} 格，仅落字 ${usedCells} 格，空白比例约 ${Math.round(blankRatio * 100)}%。`,
         locations: [{ row: 0, col: 0, pageId: page.id }],
@@ -2777,6 +2816,7 @@ function checkConsecutiveDuplicates() {
             issues.push({
               id: `dup-h-${page.id}-${row}-${startCol}`,
               type: "warning",
+              category: "duplicate",
               title: `「${prevChar}」横向连续重复`,
               desc: `第 ${row + 1} 行第 ${startCol + 1} 列起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
               locations,
@@ -2797,6 +2837,7 @@ function checkConsecutiveDuplicates() {
         issues.push({
           id: `dup-h-${page.id}-${row}-${startCol}`,
           type: "warning",
+          category: "duplicate",
           title: `「${prevChar}」横向连续重复`,
           desc: `第 ${row + 1} 行第 ${startCol + 1} 列起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
           locations,
@@ -2826,6 +2867,7 @@ function checkConsecutiveDuplicates() {
             issues.push({
               id: `dup-v-${page.id}-${col}-${startRow}`,
               type: "warning",
+              category: "duplicate",
               title: `「${prevChar}」纵向连续重复`,
               desc: `第 ${col + 1} 列第 ${startRow + 1} 行起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
               locations,
@@ -2846,6 +2888,7 @@ function checkConsecutiveDuplicates() {
         issues.push({
           id: `dup-v-${page.id}-${col}-${startRow}`,
           type: "warning",
+          category: "duplicate",
           title: `「${prevChar}」纵向连续重复`,
           desc: `第 ${col + 1} 列第 ${startRow + 1} 行起，「${prevChar}」连续出现 ${streak} 次（同一款式）。`,
           locations,
@@ -2880,6 +2923,7 @@ function checkEdgeDensity() {
       issues.push({
         id: `edge-${page.id}`,
         type: "warning",
+        category: "edge",
         title: `页面「${page.name}」边缘落字过密`,
         desc: `边缘格子共落字 ${edgeUsed} 个，占总落字 ${totalUsed} 个的 ${Math.round((edgeUsed / totalUsed) * 100)}%，视觉上可能显得拥挤。`,
         locations,
@@ -2896,6 +2940,7 @@ function checkEmptyTitle() {
     issues.push({
       id: "empty-title",
       type: "error",
+      category: "empty-title",
       title: "作品名为空",
       desc: "当前作品名未填写，导出图片将使用默认文件名。",
       focusElement: "workTitle",
@@ -2919,6 +2964,7 @@ function checkExportSize() {
       issues.push({
         id: `empty-page-${page.id}`,
         type: "error",
+        category: "export-size",
         title: `页面「${page.name}」无内容`,
         desc: `该页面未落任何字，导出后为空白页面。`,
         locations: [{ row: 0, col: 0, pageId: page.id }],
@@ -2930,6 +2976,7 @@ function checkExportSize() {
       issues.push({
         id: `export-size-${page.id}`,
         type: "error",
+        category: "export-size",
         title: `页面「${page.name}」导出尺寸异常`,
         desc: `当前导出尺寸为 ${sizeText}，允许范围为单边 ${exportSizeLimits.minSide}-${exportSizeLimits.maxSide}px 且总像素不超过 ${Math.round(exportSizeLimits.maxPixels / 10000)} 万。`,
         focusElement: invalidSize ? "paperSize" : "gridGap",
@@ -2940,6 +2987,7 @@ function checkExportSize() {
       issues.push({
         id: `large-gap-${page.id}`,
         type: "warning",
+        category: "export-size",
         title: `页面「${page.name}」网格间距过大`,
         desc: `当前网格间距 ${page.settings.gridGap}px，落字较多时字距过大，可能影响整体观感。`,
         focusElement: "gridGap",
@@ -2965,13 +3013,45 @@ function hasSevereIssues(issues) {
   return issues.some((i) => i.type === "error");
 }
 
-function renderProofread() {
-  const issues = runProofread();
+let cachedProofreadIssues = null;
+let proofreadFilterCategory = "all";
+let proofreadNavIndex = -1;
+
+function getFilteredIssues() {
+  if (!cachedProofreadIssues) return [];
+  if (proofreadFilterCategory === "all") return cachedProofreadIssues;
+  return cachedProofreadIssues.filter((i) => i.category === proofreadFilterCategory);
+}
+
+function runAndCacheProofread() {
+  cachedProofreadIssues = runProofread();
+  return cachedProofreadIssues;
+}
+
+const PROOFREAD_CATEGORY_LABELS = {
+  shortage: "库存超量",
+  blank: "空白过多",
+  duplicate: "连续重复",
+  edge: "边缘过密",
+  "empty-title": "标题为空",
+  "export-size": "导出尺寸异常"
+};
+
+function renderProofreadSummary(issues) {
   const errorCount = issues.filter((i) => i.type === "error").length;
   const warningCount = issues.filter((i) => i.type === "warning").length;
-
   const errorClass = errorCount > 0 ? "error" : "ok";
   const warningClass = warningCount > 0 ? "warning" : "ok";
+
+  const categoryBreakdown = Object.entries(PROOFREAD_CATEGORY_LABELS).map(([cat, label]) => {
+    const count = issues.filter((i) => i.category === cat).length;
+    if (count === 0) return "";
+    const type = issues.find((i) => i.category === cat)?.type || "warning";
+    return `<div class="proofread-summary-item ${type === "error" ? "error" : "warning"}" style="font-size:11px;padding:8px 10px;">
+      <span class="label">${label}</span>
+      <span class="value" style="font-size:14px;">${count}</span>
+    </div>`;
+  }).join("");
 
   els.proofreadSummary.innerHTML = `
     <div class="proofread-summary-item ${errorClass}">
@@ -2982,9 +3062,19 @@ function renderProofread() {
       <span class="label">提示警告</span>
       <span class="value">${warningCount} 项</span>
     </div>
+    ${categoryBreakdown}
   `;
+}
 
-  if (issues.length === 0) {
+function renderProofread() {
+  const issues = runAndCacheProofread();
+  renderProofreadSummary(issues);
+
+  renderProofreadFilterBar(issues);
+
+  const filtered = getFilteredIssues();
+
+  if (filtered.length === 0) {
     els.proofreadIssues.innerHTML = `
       <div class="proofread-empty">
         <div class="proofread-empty-icon">✓</div>
@@ -2992,28 +3082,141 @@ function renderProofread() {
         <div class="proofread-empty-hint">未发现异常问题，可以放心导出</div>
       </div>
     `;
+    document.getElementById("proofreadNavBar").hidden = true;
+    proofreadNavIndex = -1;
   } else {
-    els.proofreadIssues.innerHTML = issues
+    proofreadNavIndex = Math.min(proofreadNavIndex, filtered.length - 1);
+    if (proofreadNavIndex < 0) proofreadNavIndex = 0;
+    els.proofreadIssues.innerHTML = filtered
       .sort((a, b) => {
         if (a.type !== b.type) return a.type === "error" ? -1 : 1;
         return 0;
       })
-      .map(
-        (issue) => `
-      <article class="proofread-issue ${issue.type}" data-proofread-id="${issue.id}">
-        <div class="proofread-issue-head">
-          <span class="proofread-issue-title">${escapeHtml(issue.title)}</span>
-          <span class="proofread-issue-tag ${issue.type}">${issue.type === "error" ? "严重" : "提示"}</span>
-        </div>
-        <div class="proofread-issue-desc">${escapeHtml(issue.desc)}</div>
-        <span class="proofread-issue-loc">📍 ${escapeHtml(issue.locText)}</span>
-      </article>
-    `
-      )
+      .map((issue, idx) => renderProofreadIssueCard(issue, idx))
       .join("");
+    updateProofreadNavBar(filtered);
   }
 
   return issues;
+}
+
+function renderProofreadFilterBar(issues) {
+  const categoryCounts = { all: issues.length };
+  const categories = ["shortage", "blank", "duplicate", "edge", "empty-title", "export-size"];
+  categories.forEach((cat) => {
+    categoryCounts[cat] = issues.filter((i) => i.category === cat).length;
+  });
+
+  document.querySelectorAll("#proofreadFilterBar .proofread-filter-btn").forEach((btn) => {
+    const cat = btn.dataset.filterCategory;
+    const count = categoryCounts[cat] || 0;
+    btn.classList.toggle("active", cat === proofreadFilterCategory);
+    if (count > 0 && cat !== "all") {
+      btn.setAttribute("data-count", count);
+    } else {
+      btn.removeAttribute("data-count");
+    }
+  });
+}
+
+function updateProofreadNavBar(filtered) {
+  const navBar = document.getElementById("proofreadNavBar");
+  const navInfo = document.getElementById("proofreadNavInfo");
+  if (filtered.length === 0) {
+    navBar.hidden = true;
+    return;
+  }
+  navBar.hidden = false;
+  navInfo.textContent = `${proofreadNavIndex + 1} / ${filtered.length}`;
+}
+
+function navigateProofreadIssue(direction) {
+  const filtered = getFilteredIssues();
+  if (filtered.length === 0) return;
+  if (direction === "next") {
+    proofreadNavIndex = (proofreadNavIndex + 1) % filtered.length;
+  } else {
+    proofreadNavIndex = (proofreadNavIndex - 1 + filtered.length) % filtered.length;
+  }
+  const issue = filtered[proofreadNavIndex];
+
+  if (issue.focusElement) {
+    const target = document.getElementById(issue.focusElement);
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.style.transition = "box-shadow 0.3s";
+      target.style.boxShadow = "0 0 0 3px rgba(166, 64, 55, 0.3)";
+      setTimeout(() => { target.style.boxShadow = ""; }, 2000);
+    }
+  }
+  if (issue.locations && issue.locations.length > 0) {
+    highlightCells(issue.locations, issue.type === "warning");
+  } else {
+    updateProofreadActiveItem();
+  }
+
+  updateProofreadNavBar(filtered);
+}
+
+function renderProofreadIssueCard(issue, idx) {
+  const categoryLabel = PROOFREAD_CATEGORY_LABELS[issue.category] || issue.category;
+  return `
+    <article class="proofread-issue ${issue.type} ${idx === proofreadNavIndex ? "proofread-active" : ""}" data-proofread-id="${issue.id}" data-proofread-idx="${idx}">
+      <div class="proofread-issue-head">
+        <span class="proofread-issue-title">${escapeHtml(issue.title)}</span>
+        <div class="proofread-issue-tags">
+          <span class="proofread-issue-category">${escapeHtml(categoryLabel)}</span>
+          <span class="proofread-issue-tag ${issue.type}">${issue.type === "error" ? "严重" : "提示"}</span>
+        </div>
+      </div>
+      <div class="proofread-issue-desc">${escapeHtml(issue.desc)}</div>
+      <span class="proofread-issue-loc">📍 ${escapeHtml(issue.locText)}</span>
+    </article>
+  `;
+}
+
+function updateProofreadActiveItem() {
+  document.querySelectorAll(".proofread-issue.proofread-active").forEach((el) => {
+    el.classList.remove("proofread-active");
+  });
+  const activeEl = document.querySelector(`.proofread-issue[data-proofread-idx="${proofreadNavIndex}"]`);
+  if (activeEl) {
+    activeEl.classList.add("proofread-active");
+    activeEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function refreshProofreadFromCache() {
+  if (!cachedProofreadIssues) {
+    renderProofread();
+    return;
+  }
+  renderProofreadSummary(cachedProofreadIssues);
+  renderProofreadFilterBar(cachedProofreadIssues);
+  const filtered = getFilteredIssues();
+  if (filtered.length === 0) {
+    els.proofreadIssues.innerHTML = `
+      <div class="proofread-empty">
+        <div class="proofread-empty-icon">✓</div>
+        <div class="proofread-empty-text">排版校对通过</div>
+        <div class="proofread-empty-hint">未发现异常问题，可以放心导出</div>
+      </div>
+    `;
+    document.getElementById("proofreadNavBar").hidden = true;
+    proofreadNavIndex = -1;
+    return;
+  }
+  proofreadNavIndex = Math.min(proofreadNavIndex, filtered.length - 1);
+  if (proofreadNavIndex < 0) proofreadNavIndex = 0;
+  els.proofreadIssues.innerHTML = filtered
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === "error" ? -1 : 1;
+      return 0;
+    })
+    .map((issue, idx) => renderProofreadIssueCard(issue, idx))
+    .join("");
+  updateProofreadNavBar(filtered);
 }
 
 let exportProofreadResult = null;
@@ -3070,7 +3273,11 @@ function switchRightTab(tabName) {
     content.hidden = content.dataset.rightTabContent !== tabName;
   });
   if (tabName === "proofread") {
-    renderProofread();
+    if (cachedProofreadIssues) {
+      refreshProofreadFromCache();
+    } else {
+      renderProofread();
+    }
   }
 }
 
@@ -4045,7 +4252,24 @@ els.proofreadBtn.addEventListener("click", () => {
 });
 
 els.proofreadRefreshBtn.addEventListener("click", () => {
+  cachedProofreadIssues = null;
   renderProofread();
+});
+
+document.getElementById("proofreadFilterBar").addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-filter-category]");
+  if (!btn) return;
+  proofreadFilterCategory = btn.dataset.filterCategory;
+  proofreadNavIndex = 0;
+  refreshProofreadFromCache();
+});
+
+document.getElementById("proofreadNextBtn").addEventListener("click", () => {
+  navigateProofreadIssue("next");
+});
+
+document.getElementById("proofreadPrevBtn").addEventListener("click", () => {
+  navigateProofreadIssue("prev");
 });
 
 els.panelTabs.addEventListener("click", (event) => {
@@ -4059,9 +4283,14 @@ els.proofreadIssues.addEventListener("click", (event) => {
   const issueEl = event.target.closest("[data-proofread-id]");
   if (!issueEl) return;
   const issueId = issueEl.dataset.proofreadId;
-  const issues = runProofread();
-  const issue = issues.find((i) => i.id === issueId);
+  const idx = parseInt(issueEl.dataset.proofreadIdx, 10);
+  if (!isNaN(idx)) {
+    proofreadNavIndex = idx;
+  }
+  const filtered = getFilteredIssues();
+  const issue = filtered.find((i) => i.id === issueId);
   if (!issue) return;
+
   if (issue.focusElement) {
     const target = document.getElementById(issue.focusElement);
     if (target) {
@@ -4076,7 +4305,10 @@ els.proofreadIssues.addEventListener("click", (event) => {
   }
   if (issue.locations && issue.locations.length > 0) {
     highlightCells(issue.locations, issue.type === "warning");
+  } else {
+    updateProofreadActiveItem();
   }
+  updateProofreadNavBar(filtered);
 });
 
 els.exportConfirmClose.addEventListener("click", closeExportConfirm);
