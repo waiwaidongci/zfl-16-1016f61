@@ -3584,6 +3584,10 @@ h3 {
   font-size: 13px;
 }
 
+.test-runner[hidden] {
+  display: none;
+}
+
 .test-runner-head {
   display: flex;
   align-items: center;
