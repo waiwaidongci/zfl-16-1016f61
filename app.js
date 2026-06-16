@@ -2750,10 +2750,14 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
   let remainingCells = [];
   let pagesExtended = 0;
   const maxExtraPages = 50;
+  const previewPageCache = new Map();
 
   const getOrCreatePage = (idx) => {
     if (idx < state.pages.length) {
       return state.pages[idx];
+    }
+    if (previewPageCache.has(idx)) {
+      return previewPageCache.get(idx);
     }
     const newIdx = state.pages.length + pagesExtended + 1;
     pagesExtended += 1;
@@ -2765,6 +2769,7 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
       activeTemplateId: state.pages[state.pages.length - 1]?.activeTemplateId || null,
       _isNew: true
     };
+    previewPageCache.set(idx, newPage);
     return newPage;
   };
 
@@ -2812,13 +2817,13 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
 
     if (!assigned) {
       if (!inventoryShortages[ch]) {
-        inventoryShortages[ch] = { char: ch, needed: 0, available: 0, styles: [] };
-      }
-      inventoryShortages[ch].needed += 1;
-      if (inventoryShortages[ch].available === 0) {
-        inventoryShortages[ch].available = matchingTypes.reduce((sum, t) => sum + t.quantity, 0);
+        const remainingAvailable = matchingTypes.reduce(
+          (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0
+        );
+        inventoryShortages[ch] = { char: ch, needed: 0, available: remainingAvailable, styles: [] };
         inventoryShortages[ch].styles = matchingTypes.map(t => t.style);
       }
+      inventoryShortages[ch].needed += 1;
       charAssignments.push({ char: ch, typeId: null, status: "shortage" });
       continue;
     }
@@ -2925,7 +2930,9 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
       perCharResults.push({ char: ch, needed, status: "missing", allocations: [], totalAvailable: 0 });
       continue;
     }
-    const totalAvailable = matchingTypes.reduce((sum, t) => sum + t.quantity, 0);
+    const totalAvailable = matchingTypes.reduce(
+      (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0
+    );
     const allocations = charAllocations[ch] || [];
     const allocatedCount = allocations.reduce((sum, a) => sum + a.count, 0);
     const status = allocatedCount >= needed ? "ok" : "low";
