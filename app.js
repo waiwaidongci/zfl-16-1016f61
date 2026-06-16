@@ -266,6 +266,14 @@ function duplicateWork(workId) {
   const newState = structuredClone(sourceState);
 
   const typeIdMap = new Map();
+  const remapPlacements = (placements = []) => placements.map(p => {
+    const newPlacement = { ...p };
+    if (typeIdMap.has(newPlacement.typeId)) {
+      newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
+    }
+    return newPlacement;
+  });
+
   newState.inventory = newState.inventory.map(item => {
     const newItem = { ...item, id: crypto.randomUUID() };
     typeIdMap.set(item.id, newItem.id);
@@ -277,13 +285,7 @@ function duplicateWork(workId) {
 
   newState.pages.forEach(page => {
     page.id = crypto.randomUUID();
-    page.placements = page.placements.map(p => {
-      const newPlacement = { ...p };
-      if (typeIdMap.has(newPlacement.typeId)) {
-        newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
-      }
-      return newPlacement;
-    });
+    page.placements = remapPlacements(page.placements);
   });
   if (newState.pages.length > 0) {
     newState.currentPageId = newState.pages[0].id;
@@ -295,16 +297,13 @@ function duplicateWork(workId) {
       newDraft.pages = newDraft.pages.map(p => {
         const newPage = { ...p, id: crypto.randomUUID() };
         if (newPage.placements) {
-          newPage.placements = newPage.placements.map(pl => {
-            const newPl = { ...pl };
-            if (typeIdMap.has(newPl.typeId)) {
-              newPl.typeId = typeIdMap.get(newPl.typeId);
-            }
-            return newPl;
-          });
+          newPage.placements = remapPlacements(newPage.placements);
         }
         return newPage;
       });
+    }
+    if (newDraft.placements) {
+      newDraft.placements = remapPlacements(newDraft.placements);
     }
     return newDraft;
   });
