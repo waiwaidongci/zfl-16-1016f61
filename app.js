@@ -1290,7 +1290,13 @@ const els = {
   clearSelectionBtn: document.querySelector("#clearSelectionBtn"),
   draftFromSelectionBtn: document.querySelector("#draftFromSelectionBtn"),
   cancelSelectionBtn: document.querySelector("#cancelSelectionBtn"),
-  stageContainer: document.querySelector(".stage-container")
+  stageContainer: document.querySelector(".stage-container"),
+  templateApplyConfirmModal: document.querySelector("#templateApplyConfirmModal"),
+  templateApplyConfirmTitle: document.querySelector("#templateApplyConfirmTitle"),
+  templateApplyConfirmContent: document.querySelector("#templateApplyConfirmContent"),
+  templateApplyConfirmClose: document.querySelector("#templateApplyConfirmClose"),
+  templateApplyConfirmCancel: document.querySelector("#templateApplyConfirmCancel"),
+  templateApplyConfirmOk: document.querySelector("#templateApplyConfirmOk")
 };
 
 function loadState() {
@@ -1496,8 +1502,69 @@ function closeTemplateLibraryModal() {
   els.templateLibraryModal.hidden = true;
 }
 
+let pendingTemplateApply = null;
+
+function openTemplateApplyConfirmModal(templateId, mode) {
+  const template = layoutTemplates.find((t) => t.id === templateId);
+  if (!template) return;
+
+  pendingTemplateApply = { templateId, mode };
+
+  if (mode === "clear") {
+    const currentCount = getCurrentPage().placements.length;
+    els.templateApplyConfirmTitle.textContent = "确认清空应用";
+    els.templateApplyConfirmContent.innerHTML = `
+      <div class="template-apply-confirm">
+        <p>即将应用模板：<strong>${escapeHtml(template.name)}</strong></p>
+        <p>当前页共有 <strong>${currentCount}</strong> 个落字，应用后将全部清空。</p>
+        <p class="warning-text">此操作不可撤销（但可通过撤销功能恢复）。</p>
+      </div>
+    `;
+  } else {
+    const compatibility = calculateTemplateCompatibility(templateId, template.recommended.paperSize);
+    els.templateApplyConfirmTitle.textContent = "确认保留兼容落字";
+
+    let contentHtml = `
+      <div class="template-apply-confirm">
+        <p>即将应用模板：<strong>${escapeHtml(template.name)}</strong></p>
+        <p>当前页共有 <strong>${compatibility.totalCount}</strong> 个落字。</p>
+        <p class="keep-text">✓ 可保留 <strong>${compatibility.keptCount}</strong> 个落在新模板有效位置内的字</p>
+    `;
+
+    if (compatibility.removedCount > 0) {
+      const removedSummary = generatePositionSummary(compatibility.removed);
+      contentHtml += `
+        <p class="remove-text">✗ 将移除 <strong>${compatibility.removedCount}</strong> 个超出模板位置的字：</p>
+        <p class="position-summary">${escapeHtml(removedSummary)}</p>
+      `;
+    } else {
+      contentHtml += `
+        <p class="info-text">所有落字都在新模板有效位置内，将全部保留。</p>
+      `;
+    }
+
+    contentHtml += `</div>`;
+    els.templateApplyConfirmContent.innerHTML = contentHtml;
+  }
+
+  els.templateApplyConfirmModal.hidden = false;
+}
+
+function closeTemplateApplyConfirmModal() {
+  els.templateApplyConfirmModal.hidden = true;
+  pendingTemplateApply = null;
+}
+
+function confirmTemplateApply() {
+  if (!pendingTemplateApply) return;
+
+  applyTemplate(pendingTemplateApply.templateId, pendingTemplateApply.mode);
+  closeTemplateApplyConfirmModal();
+}
+
 function renderTemplateList() {
   const activeTemplateId = getPageTemplateId();
+  const currentPlacementCount = getCurrentPage().placements.length;
   els.templateList.innerHTML = layoutTemplates
     .map((template) => {
       const { cols, rows } = getGrid(template.recommended.paperSize);
@@ -1518,9 +1585,14 @@ function renderTemplateList() {
               ${positions.length}个预留位
             </span>
           </div>
-          <button class="primary apply-template-btn" type="button" data-apply-template="${template.id}">
-            ${isActive ? "重新应用" : "应用模板"}
-          </button>
+          <div class="template-apply-buttons">
+            <button class="apply-template-clear-btn" type="button" data-apply-template-clear="${template.id}" title="清空当前页所有落字后应用模板">
+              ${isActive ? "清空后重新应用" : "清空后应用"}
+            </button>
+            <button class="primary apply-template-keep-btn" type="button" data-apply-template-keep="${template.id}" title="尽量保留落在新模板有效位置内的字" ${currentPlacementCount === 0 ? "disabled" : ""}>
+              ${isActive ? "保留落字重新应用" : "保留兼容落字"}
+            </button>
+          </div>
         </article>
       `;
     })
@@ -1542,7 +1614,7 @@ function renderTemplatePreview(template, cols, rows) {
   return html;
 }
 
-function applyTemplate(templateId) {
+function applyTemplate(templateId, mode = "clear") {
   const template = layoutTemplates.find((t) => t.id === templateId);
   if (!template) return;
 
@@ -1553,10 +1625,13 @@ function applyTemplate(templateId) {
   currentPage.settings.paperSize = template.recommended.paperSize;
   currentPage.settings.flowMode = template.recommended.flowMode;
   currentPage.settings.gridGap = template.recommended.gridGap;
-  currentPage.placements = [];
 
-  const { cols, rows } = getGrid();
-  currentPage.placements = currentPage.placements.filter((item) => item.row < rows && item.col < cols);
+  if (mode === "keep") {
+    const compatibility = calculateTemplateCompatibility(templateId, template.recommended.paperSize);
+    currentPage.placements = compatibility.kept;
+  } else {
+    currentPage.placements = [];
+  }
 
   clearSelection();
   closeTemplateLibraryModal();
@@ -2656,6 +2731,52 @@ function getTemplatePositions(templateId, paperSize) {
   if (!template) return [];
   const { cols, rows } = getGrid(paperSize);
   return template.getPositions(cols, rows);
+}
+
+function calculateTemplateCompatibility(templateId, paperSize) {
+  const template = layoutTemplates.find((t) => t.id === templateId);
+  if (!template) return { kept: [], removed: [], keptCount: 0, removedCount: 0 };
+
+  const { cols, rows } = getGrid(paperSize);
+  const templatePositions = template.getPositions(cols, rows);
+  const templatePositionSet = new Set(templatePositions.map((p) => placementKey(p.row, p.col)));
+
+  const currentPage = getCurrentPage();
+  const kept = [];
+  const removed = [];
+
+  for (const placement of currentPage.placements) {
+    const key = placementKey(placement.row, placement.col);
+    if (placement.row < rows && placement.col < cols && templatePositionSet.has(key)) {
+      kept.push(placement);
+    } else {
+      removed.push(placement);
+    }
+  }
+
+  return {
+    kept,
+    removed,
+    keptCount: kept.length,
+    removedCount: removed.length,
+    totalCount: currentPage.placements.length
+  };
+}
+
+function generatePositionSummary(placements, maxDisplay = 8) {
+  if (placements.length === 0) return "";
+
+  const summaries = placements.slice(0, maxDisplay).map((p) => {
+    const type = state.inventory.find((item) => item.id === p.typeId);
+    const char = type ? type.char : "?";
+    return `「${char}」(${p.row + 1}行${p.col + 1}列)`;
+  });
+
+  if (placements.length > maxDisplay) {
+    summaries.push(`...等${placements.length}个`);
+  }
+
+  return summaries.join("、");
 }
 
 let proofreadHighlightTimer = null;
@@ -4298,11 +4419,24 @@ els.tlLibraryCancel.addEventListener("click", closeTemplateLibraryModal);
 els.clearTemplateBtn.addEventListener("click", clearTemplate);
 
 els.templateList.addEventListener("click", (event) => {
-  const applyButton = event.target.closest("[data-apply-template]");
-  if (applyButton) {
-    applyTemplate(applyButton.dataset.applyTemplate);
+  const applyClearButton = event.target.closest("[data-apply-template-clear]");
+  if (applyClearButton) {
+    const templateId = applyClearButton.dataset.applyTemplateClear;
+    openTemplateApplyConfirmModal(templateId, "clear");
+    return;
+  }
+
+  const applyKeepButton = event.target.closest("[data-apply-template-keep]");
+  if (applyKeepButton && !applyKeepButton.disabled) {
+    const templateId = applyKeepButton.dataset.applyTemplateKeep;
+    openTemplateApplyConfirmModal(templateId, "keep");
+    return;
   }
 });
+
+els.templateApplyConfirmClose.addEventListener("click", closeTemplateApplyConfirmModal);
+els.templateApplyConfirmCancel.addEventListener("click", closeTemplateApplyConfirmModal);
+els.templateApplyConfirmOk.addEventListener("click", confirmTemplateApply);
 
 els.textLayoutModal.addEventListener("click", (event) => {
   if (event.target === els.textLayoutModal) closeTextLayoutModal();
@@ -4310,6 +4444,10 @@ els.textLayoutModal.addEventListener("click", (event) => {
 
 els.templateLibraryModal.addEventListener("click", (event) => {
   if (event.target === els.templateLibraryModal) closeTemplateLibraryModal();
+});
+
+els.templateApplyConfirmModal.addEventListener("click", (event) => {
+  if (event.target === els.templateApplyConfirmModal) closeTemplateApplyConfirmModal();
 });
 
 els.importModal.addEventListener("click", (event) => {
