@@ -30,7 +30,13 @@ function createDefaultWorkState() {
     workTitle: "晚风小笺",
     currentPageId: firstPage.id,
     pages: [firstPage],
-    usageTab: "current"
+    usageTab: "current",
+    exportSettings: {
+      paperColor: "#fffaf1",
+      inkDepth: 70,
+      showBorder: true,
+      showInnerGrid: false
+    }
   };
 }
 
@@ -91,6 +97,14 @@ function loadWorkFromArchive(workId) {
       newState.currentPageId = migratedPage.id;
     }
     if (!newState.usageTab) newState.usageTab = "current";
+    if (!newState.exportSettings) {
+      newState.exportSettings = {
+        paperColor: "#fffaf1",
+        inkDepth: 70,
+        showBorder: true,
+        showInnerGrid: false
+      };
+    }
     return newState;
   } catch {
     return null;
@@ -149,6 +163,14 @@ function migrateLegacyDataIfNeeded() {
       workState.currentPageId = migratedPage.id;
     }
     if (!workState.usageTab) workState.usageTab = "current";
+    if (!workState.exportSettings) {
+      workState.exportSettings = {
+        paperColor: "#fffaf1",
+        inkDepth: 70,
+        showBorder: true,
+        showInnerGrid: false
+      };
+    }
   } catch {
     return false;
   }
@@ -242,24 +264,50 @@ function duplicateWork(workId) {
   if (!sourceState) return;
 
   const newState = structuredClone(sourceState);
+
+  const typeIdMap = new Map();
+  newState.inventory = newState.inventory.map(item => {
+    const newItem = { ...item, id: crypto.randomUUID() };
+    typeIdMap.set(item.id, newItem.id);
+    return newItem;
+  });
+  if (newState.inventory.length > 0) {
+    newState.selectedTypeId = newState.inventory[0].id;
+  }
+
   newState.pages.forEach(page => {
     page.id = crypto.randomUUID();
-    page.placements = page.placements.map(p => ({ ...p }));
+    page.placements = page.placements.map(p => {
+      const newPlacement = { ...p };
+      if (typeIdMap.has(newPlacement.typeId)) {
+        newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
+      }
+      return newPlacement;
+    });
   });
   if (newState.pages.length > 0) {
     newState.currentPageId = newState.pages[0].id;
   }
-  newState.inventory = newState.inventory.map(item => ({
-    ...item,
-    id: crypto.randomUUID()
-  }));
-  if (newState.inventory.length > 0) {
-    newState.selectedTypeId = newState.inventory[0].id;
-  }
-  newState.drafts = (newState.drafts || []).map(d => ({
-    ...d,
-    id: crypto.randomUUID()
-  }));
+
+  newState.drafts = (newState.drafts || []).map(d => {
+    const newDraft = { ...d, id: crypto.randomUUID() };
+    if (newDraft.pages) {
+      newDraft.pages = newDraft.pages.map(p => {
+        const newPage = { ...p, id: crypto.randomUUID() };
+        if (newPage.placements) {
+          newPage.placements = newPage.placements.map(pl => {
+            const newPl = { ...pl };
+            if (typeIdMap.has(newPl.typeId)) {
+              newPl.typeId = typeIdMap.get(newPl.typeId);
+            }
+            return newPl;
+          });
+        }
+        return newPage;
+      });
+    }
+    return newDraft;
+  });
 
   const copyName = `${sourceMeta.name} (副本)`;
   newState.workTitle = copyName;
@@ -557,7 +605,13 @@ const defaultState = {
   workTitle: "晚风小笺",
   currentPageId: null,
   pages: [],
-  usageTab: "current"
+  usageTab: "current",
+  exportSettings: {
+    paperColor: "#fffaf1",
+    inkDepth: 70,
+    showBorder: true,
+    showInnerGrid: false
+  }
 };
 
 let state = initializeArchive();
@@ -575,7 +629,8 @@ function deepCloneState(s) {
     workTitle: s.workTitle,
     currentPageId: s.currentPageId,
     pages: structuredClone(s.pages),
-    usageTab: s.usageTab
+    usageTab: s.usageTab,
+    exportSettings: structuredClone(s.exportSettings)
   };
 }
 
@@ -779,6 +834,15 @@ function loadState() {
 
     if (!newState.usageTab) {
       newState.usageTab = "current";
+    }
+
+    if (!newState.exportSettings) {
+      newState.exportSettings = {
+        paperColor: "#fffaf1",
+        inkDepth: 70,
+        showBorder: true,
+        showInnerGrid: false
+      };
     }
 
     return newState;
@@ -1376,6 +1440,7 @@ function saveDraft() {
     title,
     workTitle: state.workTitle,
     pages: structuredClone(state.pages),
+    exportSettings: structuredClone(state.exportSettings),
     savedAt: new Date().toISOString()
   });
   state.drafts = state.drafts.slice(0, 8);
@@ -1790,17 +1855,18 @@ function updatePrintPreviewPageSelect() {
 }
 
 function openPrintPreview() {
+  const settings = state.exportSettings || printPreviewDefaults;
   printPreviewState = {
-    ...printPreviewDefaults,
+    ...settings,
     currentPageId: state.currentPageId
   };
 
-  const paperRadio = document.querySelector('input[name="ppPaperColor"][value="#fffaf1"]');
+  const paperRadio = document.querySelector(`input[name="ppPaperColor"][value="${settings.paperColor}"]`);
   if (paperRadio) paperRadio.checked = true;
-  els.ppInkDepth.value = printPreviewDefaults.inkDepth;
-  els.ppInkValue.textContent = getInkDepthLabel(printPreviewDefaults.inkDepth);
-  els.ppBorderToggle.checked = printPreviewDefaults.showBorder;
-  els.ppInnerGridToggle.checked = printPreviewDefaults.showInnerGrid;
+  els.ppInkDepth.value = settings.inkDepth;
+  els.ppInkValue.textContent = getInkDepthLabel(settings.inkDepth);
+  els.ppBorderToggle.checked = settings.showBorder;
+  els.ppInnerGridToggle.checked = settings.showInnerGrid;
 
   updatePrintPreviewPageSelect();
   renderPrintPreview();
@@ -3130,6 +3196,9 @@ document.querySelectorAll('input[name="ppPaperColor"]').forEach((radio) => {
   radio.addEventListener("change", () => {
     if (radio.checked) {
       printPreviewState.paperColor = radio.value;
+      if (!state.exportSettings) state.exportSettings = { ...printPreviewDefaults };
+      state.exportSettings.paperColor = radio.value;
+      saveState();
       renderPrintPreview();
     }
   });
@@ -3137,17 +3206,26 @@ document.querySelectorAll('input[name="ppPaperColor"]').forEach((radio) => {
 
 els.ppInkDepth.addEventListener("input", () => {
   printPreviewState.inkDepth = Number(els.ppInkDepth.value);
+  if (!state.exportSettings) state.exportSettings = { ...printPreviewDefaults };
+  state.exportSettings.inkDepth = Number(els.ppInkDepth.value);
   els.ppInkValue.textContent = getInkDepthLabel(printPreviewState.inkDepth);
+  saveState();
   renderPrintPreview();
 });
 
 els.ppBorderToggle.addEventListener("change", () => {
   printPreviewState.showBorder = els.ppBorderToggle.checked;
+  if (!state.exportSettings) state.exportSettings = { ...printPreviewDefaults };
+  state.exportSettings.showBorder = els.ppBorderToggle.checked;
+  saveState();
   renderPrintPreview();
 });
 
 els.ppInnerGridToggle.addEventListener("change", () => {
   printPreviewState.showInnerGrid = els.ppInnerGridToggle.checked;
+  if (!state.exportSettings) state.exportSettings = { ...printPreviewDefaults };
+  state.exportSettings.showInnerGrid = els.ppInnerGridToggle.checked;
+  saveState();
   renderPrintPreview();
 });
 
@@ -3320,6 +3398,10 @@ els.draftList.addEventListener("click", (event) => {
       state.workTitle = draft.workTitle;
     } else if (draft.settings?.workTitle) {
       state.workTitle = draft.settings.workTitle;
+    }
+
+    if (draft.exportSettings) {
+      state.exportSettings = structuredClone(draft.exportSettings);
     }
 
     renderAll();
