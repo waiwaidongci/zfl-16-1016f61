@@ -1,0 +1,30 @@
+{
+  "name": "zfl16-movable-type-workshop",
+  "version": "1.0.0",
+  "description": "活字排版工坊 - 纯前端本地活字印章排版应用",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "http-server . -p 8080 -c-1 -o",
+    "serve": "http-server . -p 8080 -c-1",
+    "lint": "eslint \"app.js\"",
+    "lint:fix": "eslint \"app.js\" --fix",
+    "lint:strict": "eslint \"app.js\" --max-warnings 0",
+    "format": "prettier --check \"*.{js,css,html,json,md}\"",
+    "format:fix": "prettier --write \"*.{js,css,html,json,md}\"",
+    "test:smoke": "playwright test --project=smoke",
+    "test:smoke:headed": "playwright test --project=smoke --headed",
+    "test:png": "playwright test --project=png-export",
+    "test:all": "playwright test",
+    "test:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "eslint": "^8.57.0",
+    "globals": "^15.0.0",
+    "http-server": "^14.1.1",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
+    "prettier": "^3.3.0"
+  }
+}

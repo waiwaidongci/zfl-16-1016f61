@@ -1,0 +1,29 @@
+{
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "globals": {
+    "crypto": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-undef": "error",
+    "no-console": "off",
+    "no-alert": "off",
+    "semi": ["error", "always"],
+    "eqeqeq": ["warn", "smart"],
+    "no-var": "warn",
+    "prefer-const": "warn",
+    "no-trailing-spaces": "warn",
+    "no-multiple-empty-lines": ["warn", { "max": 2 }],
+    "use-isnan": "error",
+    "valid-typeof": "error",
+    "no-empty": ["warn", { "allowEmptyCatch": true }]
+  },
+  "ignorePatterns": ["node_modules/", "playwright-report/", "test-results/", "tests/snapshots/"]
+}

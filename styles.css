@@ -21,8 +21,7 @@ body {
   min-height: 100vh;
   background:
     linear-gradient(90deg, rgba(54, 95, 125, 0.07) 1px, transparent 1px),
-    linear-gradient(rgba(164, 64, 55, 0.06) 1px, transparent 1px),
-    var(--paper);
+    linear-gradient(rgba(164, 64, 55, 0.06) 1px, transparent 1px), var(--paper);
   background-size: 28px 28px;
   color: var(--ink);
   font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -41,7 +40,10 @@ button {
   color: var(--ink);
   padding: 10px 14px;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
 button:hover {
@@ -401,8 +403,7 @@ h3 {
   border: 2px solid #2f2921;
   background:
     linear-gradient(rgba(47, 41, 33, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(47, 41, 33, 0.08) 1px, transparent 1px),
-    #fffaf1;
+    linear-gradient(90deg, rgba(47, 41, 33, 0.08) 1px, transparent 1px), #fffaf1;
   box-shadow: inset 0 0 0 14px rgba(183, 134, 44, 0.08);
   padding: 18px;
   gap: 8px;
@@ -1677,7 +1678,8 @@ h3 {
 }
 
 @keyframes proofread-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -2433,12 +2435,16 @@ h3 {
   display: grid;
   place-items: center;
   background:
-    linear-gradient(45deg, rgba(0,0,0,0.03) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(0,0,0,0.03) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.03) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.03) 75%);
+    linear-gradient(45deg, rgba(0, 0, 0, 0.03) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(0, 0, 0, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.03) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.03) 75%);
   background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0px;
 }
 
 .print-preview-canvas-wrap {
@@ -2533,8 +2539,14 @@ h3 {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .archive-header {
@@ -2573,7 +2585,9 @@ h3 {
 .archive-search-wrap input {
   width: 240px;
   padding-left: 38px;
-  background: #fffdf8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f675c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cpath d='m21 21-4.3-4.3'%3E%3C/path%3E%3C/svg%3E") no-repeat 12px center;
+  background: #fffdf8
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f675c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cpath d='m21 21-4.3-4.3'%3E%3C/path%3E%3C/svg%3E")
+    no-repeat 12px center;
 }
 
 .archive-filter-tabs {

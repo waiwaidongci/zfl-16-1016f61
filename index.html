@@ -63,166 +63,165 @@
       </section>
 
       <section id="editorView" class="editor-view">
-
-      <section class="settings-bar" aria-label="版面设置">
-        <label>
-          作品名
-          <input id="workTitle" type="text" placeholder="例：晚风小笺" />
-        </label>
-        <div class="divider-v"></div>
-        <label>
-          纸张
-          <select id="paperSize">
-            <option value="postcard">明信片</option>
-            <option value="bookmark">书签</option>
-            <option value="square">方形小笺</option>
-          </select>
-        </label>
-        <label>
-          方向
-          <select id="flowMode">
-            <option value="horizontal">横排</option>
-            <option value="vertical">竖排</option>
-          </select>
-        </label>
-        <label>
-          网格
-          <input id="gridGap" type="range" min="4" max="18" value="8" />
-        </label>
-      </section>
-
-      <section class="workspace">
-        <aside class="panel inventory-panel">
-          <div class="panel-head">
-            <h2>字模库</h2>
-            <div class="panel-head-actions">
-              <span id="inventoryCount"></span>
-              <button id="exportInventoryBtn" class="mini-btn" type="button" title="导出字模库">导出</button>
-              <button id="importInventoryBtn" class="mini-btn" type="button" title="导入字模库">导入</button>
-              <input id="importFileInput" type="file" accept="application/json,.json" hidden />
-            </div>
-          </div>
-          <form id="typeForm" class="type-form">
-            <input id="charInput" maxlength="2" placeholder="字" required />
-            <input id="styleInput" placeholder="风格" required />
-            <input id="sizeInput" type="number" min="8" max="72" value="24" required />
-            <input id="quantityInput" type="number" min="1" max="99" value="3" required />
-            <select id="wearInput">
-              <option value="新">新</option>
-              <option value="微磨">微磨</option>
-              <option value="旧痕">旧痕</option>
+        <section class="settings-bar" aria-label="版面设置">
+          <label>
+            作品名
+            <input id="workTitle" type="text" placeholder="例：晚风小笺" />
+          </label>
+          <div class="divider-v"></div>
+          <label>
+            纸张
+            <select id="paperSize">
+              <option value="postcard">明信片</option>
+              <option value="bookmark">书签</option>
+              <option value="square">方形小笺</option>
             </select>
-            <button class="primary" type="submit">加入</button>
-          </form>
-          <div class="filter-row">
-            <input id="inventorySearch" type="search" placeholder="搜索字或风格" />
-            <select id="styleFilter">
-              <option value="all">全部风格</option>
+          </label>
+          <label>
+            方向
+            <select id="flowMode">
+              <option value="horizontal">横排</option>
+              <option value="vertical">竖排</option>
             </select>
-            <select id="wearFilter">
-              <option value="all">全部磨损</option>
-              <option value="新">新</option>
-              <option value="微磨">微磨</option>
-              <option value="旧痕">旧痕</option>
-            </select>
-          </div>
-          <div id="typeList" class="type-list"></div>
-        </aside>
-
-        <section class="stage-wrap">
-          <div class="pages-bar">
-            <div class="pages-tabs" id="pagesTabs"></div>
-            <div class="pages-actions">
-              <button id="addPageBtn" class="mini-btn" type="button" title="新增页面">+ 新增</button>
-              <button id="duplicatePageBtn" class="mini-btn" type="button" title="复制当前页">⧉ 复制</button>
-              <button id="renamePageBtn" class="mini-btn" type="button" title="重命名">✎ 改名</button>
-              <button id="deletePageBtn" class="mini-btn" type="button" title="删除当前页">× 删除</button>
-            </div>
-          </div>
-          <div class="status-strip">
-            <div>
-              <strong id="selectedTypeLabel">未选择字模</strong>
-              <span>点击字模后，在版面格子中落字，也可拖拽字模到版面。</span>
-              <span id="activeTemplateLabel" class="template-label"></span>
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <button id="clearTemplateBtn" class="mini-btn" type="button" hidden title="清除模板">清除模板</button>
-              <div id="shortageBadge" class="badge ok">数量充足</div>
-            </div>
-          </div>
-          <div class="selection-toolbar" id="selectionToolbar" hidden>
-            <span class="selection-info" id="selectionInfo">已选择 0 个格子</span>
-            <div class="selection-actions">
-              <button id="copySelectionBtn" class="mini-btn" type="button" title="复制选区 (Ctrl+C)">📋 复制</button>
-              <button id="pasteSelectionBtn" class="mini-btn" type="button" title="粘贴选区 (Ctrl+V)">📄 粘贴</button>
-              <button id="moveSelectionBtn" class="mini-btn" type="button" title="移动选区模式">✥ 移动</button>
-              <button id="clearSelectionBtn" class="mini-btn" type="button" title="清空选区内容">🗑 清空</button>
-              <button id="draftFromSelectionBtn" class="mini-btn primary" type="button" title="按选区生成草稿片段">💾 存为草稿</button>
-              <button id="cancelSelectionBtn" class="mini-btn" type="button" title="取消选择">✕ 取消</button>
-            </div>
-          </div>
-          <div class="stage-container">
-            <div id="stage" class="stage" aria-label="排版画布"></div>
-            <div id="selectionMarquee" class="selection-marquee" hidden></div>
-          </div>
+          </label>
+          <label>
+            网格
+            <input id="gridGap" type="range" min="4" max="18" value="8" />
+          </label>
         </section>
 
-        <aside class="panel right-panel">
-          <div class="panel-tabs">
-            <button class="panel-tab active" data-right-tab="draft" type="button">草稿与核对</button>
-            <button class="panel-tab" data-right-tab="proofread" type="button">排版校对</button>
-          </div>
-
-          <div class="right-tab-content" data-right-tab-content="draft">
+        <section class="workspace">
+          <aside class="panel inventory-panel">
             <div class="panel-head">
-              <h2>草稿与核对</h2>
-            </div>
-            <div class="usage-summary">
-              <div class="usage-summary-item">
-                <span class="usage-summary-label">当前页</span>
-                <span id="currentPageCount" class="usage-summary-value">0个落字</span>
-              </div>
-              <div class="usage-summary-item total">
-                <span class="usage-summary-label">全作品</span>
-                <span id="totalCount" class="usage-summary-value">0个落字</span>
-              </div>
-            </div>
-            <div class="usage-tabs">
-              <button class="usage-tab active" data-usage-tab="current" type="button">当前页用量</button>
-              <button class="usage-tab" data-usage-tab="total" type="button">全作品用量</button>
-            </div>
-            <div id="usageList" class="usage-list"></div>
-            <div class="divider"></div>
-            <h3>已保存草稿</h3>
-            <div id="draftList" class="draft-list"></div>
-          </div>
-
-          <div class="right-tab-content" data-right-tab-content="proofread" hidden>
-            <div class="panel-head">
-              <h2>排版校对中心</h2>
+              <h2>字模库</h2>
               <div class="panel-head-actions">
-                <button id="proofreadRefreshBtn" class="mini-btn" type="button">重新检查</button>
+                <span id="inventoryCount"></span>
+                <button id="exportInventoryBtn" class="mini-btn" type="button" title="导出字模库">导出</button>
+                <button id="importInventoryBtn" class="mini-btn" type="button" title="导入字模库">导入</button>
+                <input id="importFileInput" type="file" accept="application/json,.json" hidden />
               </div>
             </div>
-            <div class="proofread-summary" id="proofreadSummary"></div>
-            <div class="proofread-filter-bar" id="proofreadFilterBar">
-              <button class="proofread-filter-btn active" data-filter-category="all" type="button">全部</button>
-              <button class="proofread-filter-btn" data-filter-category="shortage" type="button">库存超量</button>
-              <button class="proofread-filter-btn" data-filter-category="blank" type="button">空白过多</button>
-              <button class="proofread-filter-btn" data-filter-category="duplicate" type="button">连续重复</button>
-              <button class="proofread-filter-btn" data-filter-category="edge" type="button">边缘过密</button>
-              <button class="proofread-filter-btn" data-filter-category="empty-title" type="button">标题为空</button>
-              <button class="proofread-filter-btn" data-filter-category="export-size" type="button">导出尺寸异常</button>
+            <form id="typeForm" class="type-form">
+              <input id="charInput" maxlength="2" placeholder="字" required />
+              <input id="styleInput" placeholder="风格" required />
+              <input id="sizeInput" type="number" min="8" max="72" value="24" required />
+              <input id="quantityInput" type="number" min="1" max="99" value="3" required />
+              <select id="wearInput">
+                <option value="新">新</option>
+                <option value="微磨">微磨</option>
+                <option value="旧痕">旧痕</option>
+              </select>
+              <button class="primary" type="submit">加入</button>
+            </form>
+            <div class="filter-row">
+              <input id="inventorySearch" type="search" placeholder="搜索字或风格" />
+              <select id="styleFilter">
+                <option value="all">全部风格</option>
+              </select>
+              <select id="wearFilter">
+                <option value="all">全部磨损</option>
+                <option value="新">新</option>
+                <option value="微磨">微磨</option>
+                <option value="旧痕">旧痕</option>
+              </select>
             </div>
-            <div class="proofread-nav-bar" id="proofreadNavBar" hidden>
-              <span class="proofread-nav-info" id="proofreadNavInfo"></span>
-              <button id="proofreadPrevBtn" class="mini-btn" type="button">上一处</button>
-              <button id="proofreadNextBtn" class="mini-btn primary" type="button">下一处</button>
+            <div id="typeList" class="type-list"></div>
+          </aside>
+
+          <section class="stage-wrap">
+            <div class="pages-bar">
+              <div class="pages-tabs" id="pagesTabs"></div>
+              <div class="pages-actions">
+                <button id="addPageBtn" class="mini-btn" type="button" title="新增页面">+ 新增</button>
+                <button id="duplicatePageBtn" class="mini-btn" type="button" title="复制当前页">⧉ 复制</button>
+                <button id="renamePageBtn" class="mini-btn" type="button" title="重命名">✎ 改名</button>
+                <button id="deletePageBtn" class="mini-btn" type="button" title="删除当前页">× 删除</button>
+              </div>
             </div>
-            <div class="proofread-issues" id="proofreadIssues"></div>
-          </div>
-        </aside>
-      </section>
+            <div class="status-strip">
+              <div>
+                <strong id="selectedTypeLabel">未选择字模</strong>
+                <span>点击字模后，在版面格子中落字，也可拖拽字模到版面。</span>
+                <span id="activeTemplateLabel" class="template-label"></span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <button id="clearTemplateBtn" class="mini-btn" type="button" hidden title="清除模板">清除模板</button>
+                <div id="shortageBadge" class="badge ok">数量充足</div>
+              </div>
+            </div>
+            <div class="selection-toolbar" id="selectionToolbar" hidden>
+              <span class="selection-info" id="selectionInfo">已选择 0 个格子</span>
+              <div class="selection-actions">
+                <button id="copySelectionBtn" class="mini-btn" type="button" title="复制选区 (Ctrl+C)">📋 复制</button>
+                <button id="pasteSelectionBtn" class="mini-btn" type="button" title="粘贴选区 (Ctrl+V)">📄 粘贴</button>
+                <button id="moveSelectionBtn" class="mini-btn" type="button" title="移动选区模式">✥ 移动</button>
+                <button id="clearSelectionBtn" class="mini-btn" type="button" title="清空选区内容">🗑 清空</button>
+                <button id="draftFromSelectionBtn" class="mini-btn primary" type="button" title="按选区生成草稿片段">💾 存为草稿</button>
+                <button id="cancelSelectionBtn" class="mini-btn" type="button" title="取消选择">✕ 取消</button>
+              </div>
+            </div>
+            <div class="stage-container">
+              <div id="stage" class="stage" aria-label="排版画布"></div>
+              <div id="selectionMarquee" class="selection-marquee" hidden></div>
+            </div>
+          </section>
+
+          <aside class="panel right-panel">
+            <div class="panel-tabs">
+              <button class="panel-tab active" data-right-tab="draft" type="button">草稿与核对</button>
+              <button class="panel-tab" data-right-tab="proofread" type="button">排版校对</button>
+            </div>
+
+            <div class="right-tab-content" data-right-tab-content="draft">
+              <div class="panel-head">
+                <h2>草稿与核对</h2>
+              </div>
+              <div class="usage-summary">
+                <div class="usage-summary-item">
+                  <span class="usage-summary-label">当前页</span>
+                  <span id="currentPageCount" class="usage-summary-value">0个落字</span>
+                </div>
+                <div class="usage-summary-item total">
+                  <span class="usage-summary-label">全作品</span>
+                  <span id="totalCount" class="usage-summary-value">0个落字</span>
+                </div>
+              </div>
+              <div class="usage-tabs">
+                <button class="usage-tab active" data-usage-tab="current" type="button">当前页用量</button>
+                <button class="usage-tab" data-usage-tab="total" type="button">全作品用量</button>
+              </div>
+              <div id="usageList" class="usage-list"></div>
+              <div class="divider"></div>
+              <h3>已保存草稿</h3>
+              <div id="draftList" class="draft-list"></div>
+            </div>
+
+            <div class="right-tab-content" data-right-tab-content="proofread" hidden>
+              <div class="panel-head">
+                <h2>排版校对中心</h2>
+                <div class="panel-head-actions">
+                  <button id="proofreadRefreshBtn" class="mini-btn" type="button">重新检查</button>
+                </div>
+              </div>
+              <div class="proofread-summary" id="proofreadSummary"></div>
+              <div class="proofread-filter-bar" id="proofreadFilterBar">
+                <button class="proofread-filter-btn active" data-filter-category="all" type="button">全部</button>
+                <button class="proofread-filter-btn" data-filter-category="shortage" type="button">库存超量</button>
+                <button class="proofread-filter-btn" data-filter-category="blank" type="button">空白过多</button>
+                <button class="proofread-filter-btn" data-filter-category="duplicate" type="button">连续重复</button>
+                <button class="proofread-filter-btn" data-filter-category="edge" type="button">边缘过密</button>
+                <button class="proofread-filter-btn" data-filter-category="empty-title" type="button">标题为空</button>
+                <button class="proofread-filter-btn" data-filter-category="export-size" type="button">导出尺寸异常</button>
+              </div>
+              <div class="proofread-nav-bar" id="proofreadNavBar" hidden>
+                <span class="proofread-nav-info" id="proofreadNavInfo"></span>
+                <button id="proofreadPrevBtn" class="mini-btn" type="button">上一处</button>
+                <button id="proofreadNextBtn" class="mini-btn primary" type="button">下一处</button>
+              </div>
+              <div class="proofread-issues" id="proofreadIssues"></div>
+            </div>
+          </aside>
+        </section>
       </section>
     </main>
 
@@ -551,32 +550,32 @@
               <div class="pp-color-swatches">
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#fffaf1" checked />
-                  <span class="pp-swatch-color" style="background:#fffaf1"></span>
+                  <span class="pp-swatch-color" style="background: #fffaf1"></span>
                   <span class="pp-swatch-label">米白旧笺</span>
                 </label>
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#f5e6c8" />
-                  <span class="pp-swatch-color" style="background:#f5e6c8"></span>
+                  <span class="pp-swatch-color" style="background: #f5e6c8"></span>
                   <span class="pp-swatch-label">仿古牛皮</span>
                 </label>
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#efe4d0" />
-                  <span class="pp-swatch-color" style="background:#efe4d0"></span>
+                  <span class="pp-swatch-color" style="background: #efe4d0"></span>
                   <span class="pp-swatch-label">土黄毛边</span>
                 </label>
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#f0ebe0" />
-                  <span class="pp-swatch-color" style="background:#f0ebe0"></span>
+                  <span class="pp-swatch-color" style="background: #f0ebe0"></span>
                   <span class="pp-swatch-label">素白宣纸</span>
                 </label>
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#d9ceb5" />
-                  <span class="pp-swatch-color" style="background:#d9ceb5"></span>
+                  <span class="pp-swatch-color" style="background: #d9ceb5"></span>
                   <span class="pp-swatch-label">茶褐古纸</span>
                 </label>
                 <label class="pp-swatch">
                   <input type="radio" name="ppPaperColor" value="#f7ecd4" />
-                  <span class="pp-swatch-color" style="background:#f7ecd4"></span>
+                  <span class="pp-swatch-color" style="background: #f7ecd4"></span>
                   <span class="pp-swatch-label">淡黄竹纸</span>
                 </label>
               </div>

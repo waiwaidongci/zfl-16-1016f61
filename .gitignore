@@ -21,3 +21,11 @@ pnpm-debug.log*
 .vscode/
 *.swp
 *.swo
+
+playwright-report/
+test-results/
+tests/snapshots/
+*.actual.png
+*.expected.png
+*.diff.png
+

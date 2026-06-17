@@ -134,7 +134,7 @@ function loadArchiveWorksIndex() {
 function migrateLegacyDataIfNeeded() {
   const legacyData = localStorage.getItem(storageKey);
   const archiveExists = localStorage.getItem(archiveStorageKey);
-  
+
   if (!legacyData) return false;
   if (archiveExists) return false;
 
@@ -169,7 +169,7 @@ function migrateLegacyDataIfNeeded() {
     return false;
   }
 
-  const workName = (workState.workTitle && workState.workTitle.trim()) ? workState.workTitle : "我的作品";
+  const workName = workState.workTitle && workState.workTitle.trim() ? workState.workTitle : "我的作品";
   const metadata = createWorkMetadata(workName);
   const workId = metadata.id;
 
@@ -203,7 +203,7 @@ function initializeArchive() {
 
   let workId = meta?.currentWorkId;
   if (!workId || !archiveStore.works[workId]) {
-    const nonArchived = Object.values(archiveStore.works).find(w => !w.archived);
+    const nonArchived = Object.values(archiveStore.works).find((w) => !w.archived);
     workId = nonArchived ? nonArchived.id : Object.keys(archiveStore.works)[0];
     archiveStore.currentWorkId = workId;
     saveArchiveMeta();
@@ -261,19 +261,20 @@ function duplicateWork(workId) {
   newState.exportSettings = structuredClone(
     workId === archiveStore.currentWorkId && state.exportSettings
       ? state.exportSettings
-      : (sourceState.exportSettings || printPreviewDefaults)
+      : sourceState.exportSettings || printPreviewDefaults
   );
 
   const typeIdMap = new Map();
-  const remapPlacements = (placements = []) => placements.map(p => {
-    const newPlacement = { ...p };
-    if (typeIdMap.has(newPlacement.typeId)) {
-      newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
-    }
-    return newPlacement;
-  });
+  const remapPlacements = (placements = []) =>
+    placements.map((p) => {
+      const newPlacement = { ...p };
+      if (typeIdMap.has(newPlacement.typeId)) {
+        newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
+      }
+      return newPlacement;
+    });
 
-  newState.inventory = newState.inventory.map(item => {
+  newState.inventory = newState.inventory.map((item) => {
     const newItem = { ...item, id: crypto.randomUUID() };
     typeIdMap.set(item.id, newItem.id);
     return newItem;
@@ -282,7 +283,7 @@ function duplicateWork(workId) {
     newState.selectedTypeId = newState.inventory[0].id;
   }
 
-  newState.pages.forEach(page => {
+  newState.pages.forEach((page) => {
     page.id = crypto.randomUUID();
     page.placements = remapPlacements(page.placements);
   });
@@ -290,10 +291,10 @@ function duplicateWork(workId) {
     newState.currentPageId = newState.pages[0].id;
   }
 
-  newState.drafts = (newState.drafts || []).map(d => {
+  newState.drafts = (newState.drafts || []).map((d) => {
     const newDraft = { ...d, id: crypto.randomUUID() };
     if (newDraft.pages) {
-      newDraft.pages = newDraft.pages.map(p => {
+      newDraft.pages = newDraft.pages.map((p) => {
         const newPage = { ...p, id: crypto.randomUUID() };
         if (newPage.placements) {
           newPage.placements = remapPlacements(newPage.placements);
@@ -507,15 +508,16 @@ function remapWorkIds(workState) {
   const newState = structuredClone(workState);
   const typeIdMap = new Map();
 
-  const remapPlacements = (placements = []) => placements.map(p => {
-    const newPlacement = { ...p };
-    if (typeIdMap.has(newPlacement.typeId)) {
-      newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
-    }
-    return newPlacement;
-  });
+  const remapPlacements = (placements = []) =>
+    placements.map((p) => {
+      const newPlacement = { ...p };
+      if (typeIdMap.has(newPlacement.typeId)) {
+        newPlacement.typeId = typeIdMap.get(newPlacement.typeId);
+      }
+      return newPlacement;
+    });
 
-  newState.inventory = (newState.inventory || []).map(item => {
+  newState.inventory = (newState.inventory || []).map((item) => {
     const newItem = { ...item, id: crypto.randomUUID() };
     typeIdMap.set(item.id, newItem.id);
     return newItem;
@@ -529,11 +531,9 @@ function remapWorkIds(workState) {
 
   const oldCurrentPageId = newState.currentPageId;
   const oldPages = newState.pages || [];
-  const oldCurrentIndex = oldCurrentPageId
-    ? oldPages.findIndex(p => p.id === oldCurrentPageId)
-    : -1;
+  const oldCurrentIndex = oldCurrentPageId ? oldPages.findIndex((p) => p.id === oldCurrentPageId) : -1;
 
-  newState.pages = oldPages.map(page => {
+  newState.pages = oldPages.map((page) => {
     const newPage = { ...page, id: crypto.randomUUID() };
     newPage.placements = remapPlacements(page.placements);
     return newPage;
@@ -549,10 +549,10 @@ function remapWorkIds(workState) {
     newState.currentPageId = null;
   }
 
-  newState.drafts = (newState.drafts || []).map(d => {
+  newState.drafts = (newState.drafts || []).map((d) => {
     const newDraft = { ...d, id: crypto.randomUUID() };
     if (newDraft.pages) {
-      newDraft.pages = newDraft.pages.map(p => {
+      newDraft.pages = newDraft.pages.map((p) => {
         const newPage = { ...p, id: crypto.randomUUID() };
         if (newPage.placements) {
           newPage.placements = remapPlacements(newPage.placements);
@@ -597,7 +597,7 @@ function renderWorkImportModal() {
       errorsEl.hidden = false;
       errorsEl.innerHTML = `
         <h4>数据警告</h4>
-        <ul>${errors.map(e => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
+        <ul>${errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
       `;
     }
   } else {
@@ -670,25 +670,23 @@ function getFilteredWorks() {
   const query = archiveStore.searchQuery.trim().toLowerCase();
   let works = Object.values(archiveStore.works);
   if (archiveStore.filterMode === "active") {
-    works = works.filter(w => !w.archived);
+    works = works.filter((w) => !w.archived);
   } else if (archiveStore.filterMode === "archived") {
-    works = works.filter(w => w.archived);
+    works = works.filter((w) => w.archived);
   }
   if (query) {
-    works = works.filter(w => w.name.toLowerCase().includes(query));
+    works = works.filter((w) => w.name.toLowerCase().includes(query));
   }
   const sortMode = archiveStore.sortMode || "updatedAt";
   if (sortMode === "pages" || sortMode === "chars") {
-    const worksWithStats = works.map(work => ({
+    const worksWithStats = works.map((work) => ({
       work,
       stats: getWorkStats(work.id)
     }));
     worksWithStats.sort((a, b) => {
-      return sortMode === "pages"
-        ? b.stats.pages - a.stats.pages
-        : b.stats.chars - a.stats.chars;
+      return sortMode === "pages" ? b.stats.pages - a.stats.pages : b.stats.chars - a.stats.chars;
     });
-    return worksWithStats.map(item => item.work);
+    return worksWithStats.map((item) => item.work);
   }
   return works.sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -728,22 +726,27 @@ function renderArchiveView() {
   if (works.length === 0) {
     gridEl.hidden = true;
     emptyEl.hidden = false;
-    emptyEl.querySelector("h3").textContent =
-      archiveStore.searchQuery ? "没有找到匹配的作品" :
-      archiveStore.filterMode === "archived" ? "还没有归档的作品" : "还没有作品";
-    emptyEl.querySelector("p").textContent =
-      archiveStore.searchQuery ? "试试换个关键词搜索吧" :
-      archiveStore.filterMode === "archived" ? "在「进行中」列表中归档作品后，可以在这里找到" : "点击上方「新建作品」创建你的第一个活字排版作品";
+    emptyEl.querySelector("h3").textContent = archiveStore.searchQuery
+      ? "没有找到匹配的作品"
+      : archiveStore.filterMode === "archived"
+        ? "还没有归档的作品"
+        : "还没有作品";
+    emptyEl.querySelector("p").textContent = archiveStore.searchQuery
+      ? "试试换个关键词搜索吧"
+      : archiveStore.filterMode === "archived"
+        ? "在「进行中」列表中归档作品后，可以在这里找到"
+        : "点击上方「新建作品」创建你的第一个活字排版作品";
     return;
   }
 
   gridEl.hidden = false;
   emptyEl.hidden = true;
 
-  gridEl.innerHTML = works.map(work => {
-    const stats = getWorkStats(work.id);
-    const isCurrent = work.id === archiveStore.currentWorkId;
-    return `
+  gridEl.innerHTML = works
+    .map((work) => {
+      const stats = getWorkStats(work.id);
+      const isCurrent = work.id === archiveStore.currentWorkId;
+      return `
       <article class="work-card ${work.archived ? "archived" : ""} ${isCurrent ? "current" : ""}" data-work-id="${work.id}">
         <div class="work-card-head">
           <h3 class="work-card-title">${escapeHtml(work.name)}</h3>
@@ -783,7 +786,8 @@ function renderArchiveView() {
         </div>
       </article>
     `;
-  }).join("");
+    })
+    .join("");
 }
 
 function switchView(view) {
@@ -895,7 +899,8 @@ function handleArchiveCardClick(event) {
       if (confirm(`⚠ 确定要永久删除作品「${archiveStore.works[workId]?.name || ""}」吗？此操作不可恢复！`)) {
         deleteWorkFromArchive(workId);
         if (archiveStore.currentWorkId === null && Object.keys(archiveStore.works).length > 0) {
-          const firstWork = Object.values(archiveStore.works).find(w => !w.archived) || Object.values(archiveStore.works)[0];
+          const firstWork =
+            Object.values(archiveStore.works).find((w) => !w.archived) || Object.values(archiveStore.works)[0];
           switchToWork(firstWork.id);
         } else if (Object.keys(archiveStore.works).length === 0) {
           const newState = createDefaultWorkState();
@@ -1009,7 +1014,7 @@ function redo() {
   updateHistoryButtons();
 }
 
-let selectionState = {
+const selectionState = {
   selectedCells: new Set(),
   clipboard: null,
   isSelecting: false,
@@ -1043,7 +1048,10 @@ function getSelectedCellsArray() {
 function getSelectionBounds() {
   const cells = getSelectedCellsArray();
   if (cells.length === 0) return null;
-  let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+  let minRow = Infinity,
+    maxRow = -Infinity,
+    minCol = Infinity,
+    maxCol = -Infinity;
   for (const cell of cells) {
     minRow = Math.min(minRow, cell.row);
     maxRow = Math.max(maxRow, cell.row);
@@ -1055,9 +1063,8 @@ function getSelectionBounds() {
 
 function updateSelectionUI() {
   const count = selectionState.selectedCells.size;
-  const clipboardCount = selectionState.clipboard && selectionState.clipboard.placements
-    ? selectionState.clipboard.placements.length
-    : 0;
+  const clipboardCount =
+    selectionState.clipboard && selectionState.clipboard.placements ? selectionState.clipboard.placements.length : 0;
   if (els.selectionToolbar) {
     els.selectionToolbar.hidden = count === 0 && !selectionState.isPasteMode && !selectionState.clipboard;
   }
@@ -1164,7 +1171,12 @@ function hideMarquee() {
 }
 
 function showPastePreview(row, col) {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return;
+  if (
+    !selectionState.clipboard ||
+    !selectionState.clipboard.placements ||
+    selectionState.clipboard.placements.length === 0
+  )
+    return;
 
   hidePastePreview();
 
@@ -1218,15 +1230,19 @@ function hidePastePreview() {
     cell.classList.remove("paste-preview", "paste-preview-invalid", "paste-preview-template-blocked");
   });
   if (els.selectionInfo && selectionState.isPasteMode) {
-    const clipboardCount = selectionState.clipboard && selectionState.clipboard.placements
-      ? selectionState.clipboard.placements.length
-      : 0;
+    const clipboardCount =
+      selectionState.clipboard && selectionState.clipboard.placements ? selectionState.clipboard.placements.length : 0;
     els.selectionInfo.textContent = `粘贴模式：剪贴板 ${clipboardCount} 个字，点击格子选择粘贴位置`;
   }
 }
 
 function startPasteMode() {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return;
+  if (
+    !selectionState.clipboard ||
+    !selectionState.clipboard.placements ||
+    selectionState.clipboard.placements.length === 0
+  )
+    return;
   selectionState.isPasteMode = true;
   selectionState.isMoveMode = false;
   selectionState.pastePreviewCell = null;
@@ -1276,8 +1292,19 @@ function copySelection() {
 }
 
 function canPasteSelection(targetRow, targetCol) {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) {
-    return { ok: false, reason: "剪贴板为空", totalCount: 0, pasteableCount: 0, pasteablePlacements: [], invalidPlacements: [] };
+  if (
+    !selectionState.clipboard ||
+    !selectionState.clipboard.placements ||
+    selectionState.clipboard.placements.length === 0
+  ) {
+    return {
+      ok: false,
+      reason: "剪贴板为空",
+      totalCount: 0,
+      pasteableCount: 0,
+      pasteablePlacements: [],
+      invalidPlacements: []
+    };
   }
 
   const { cols, rows } = getGrid();
@@ -1343,9 +1370,7 @@ function canPasteSelection(targetRow, targetCol) {
   }
 
   const targetKeys = pasteablePlacements.map((p) => placementKey(targetRow + p.offsetRow, targetCol + p.offsetCol));
-  const existingInTarget = currentPage.placements.filter(
-    (pl) => targetKeys.includes(placementKey(pl.row, pl.col))
-  );
+  const existingInTarget = currentPage.placements.filter((pl) => targetKeys.includes(placementKey(pl.row, pl.col)));
   const freedTypeIdCount = {};
   for (const pl of existingInTarget) {
     freedTypeIdCount[pl.typeId] = (freedTypeIdCount[pl.typeId] || 0) + 1;
@@ -1395,7 +1420,12 @@ function canPasteSelection(targetRow, targetCol) {
 }
 
 function pasteSelection(targetRow, targetCol) {
-  if (!selectionState.clipboard || !selectionState.clipboard.placements || selectionState.clipboard.placements.length === 0) return { success: false, count: 0 };
+  if (
+    !selectionState.clipboard ||
+    !selectionState.clipboard.placements ||
+    selectionState.clipboard.placements.length === 0
+  )
+    return { success: false, count: 0 };
 
   const check = canPasteSelection(targetRow, targetCol);
   if (!check.ok) return { success: false, count: 0 };
@@ -1408,9 +1438,7 @@ function pasteSelection(targetRow, targetCol) {
 
   pushHistory();
 
-  currentPage.placements = currentPage.placements.filter(
-    (pl) => !targetKeys.includes(placementKey(pl.row, pl.col))
-  );
+  currentPage.placements = currentPage.placements.filter((pl) => !targetKeys.includes(placementKey(pl.row, pl.col)));
 
   for (const p of pasteablePlacements) {
     currentPage.placements.push({
@@ -1480,9 +1508,7 @@ function moveSelectionTo(targetRow, targetCol) {
   }
 
   const currentPage = getCurrentPage();
-  const originalKeys = new Set(
-    selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col))
-  );
+  const originalKeys = new Set(selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col)));
 
   const targetPlacements = selectionState.moveOriginalPlacements.map((p) => ({
     row: p.row + offsetRow,
@@ -1494,13 +1520,9 @@ function moveSelectionTo(targetRow, targetCol) {
 
   pushHistory();
 
-  currentPage.placements = currentPage.placements.filter(
-    (pl) => !originalKeys.has(placementKey(pl.row, pl.col))
-  );
+  currentPage.placements = currentPage.placements.filter((pl) => !originalKeys.has(placementKey(pl.row, pl.col)));
 
-  currentPage.placements = currentPage.placements.filter(
-    (pl) => !targetKeys.has(placementKey(pl.row, pl.col))
-  );
+  currentPage.placements = currentPage.placements.filter((pl) => !targetKeys.has(placementKey(pl.row, pl.col)));
 
   currentPage.placements.push(...targetPlacements);
 
@@ -1907,7 +1929,13 @@ function renderStage() {
   const currentPage = getCurrentPage();
   const { cols, rows } = getGrid(currentPage.settings.paperSize);
   const map = new Map(currentPage.placements.map((item) => [placementKey(item.row, item.col), item]));
-  const templatePositions = currentPage.activeTemplateId ? new Set(getTemplatePositions(currentPage.activeTemplateId, currentPage.settings.paperSize).map((p) => placementKey(p.row, p.col))) : null;
+  const templatePositions = currentPage.activeTemplateId
+    ? new Set(
+        getTemplatePositions(currentPage.activeTemplateId, currentPage.settings.paperSize).map((p) =>
+          placementKey(p.row, p.col)
+        )
+      )
+    : null;
   els.stage.className = `stage ${currentPage.settings.paperSize}`;
   els.stage.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
   els.stage.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
@@ -1922,8 +1950,8 @@ function renderStage() {
       const inTemplate = templatePositions?.has(key);
       const templateCellClass = templatePositions ? (inTemplate ? "template-cell" : "non-template-cell") : "";
       cells.push(`
-        <button class="cell ${type ? 'used' : ''} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
-          ${type ? escapeHtml(type.char) : ''}
+        <button class="cell ${type ? "used" : ""} ${vertical} ${templateCellClass}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+          ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
     }
@@ -2109,7 +2137,9 @@ function renderUsage() {
   els.shortageBadge.className = `badge ${shortages.length ? "warn" : "ok"}`;
 
   const selectedType = getSelectedType();
-  els.selectedTypeLabel.textContent = selectedType ? `当前：${selectedType.char} · ${selectedType.style}` : "未选择字模";
+  els.selectedTypeLabel.textContent = selectedType
+    ? `当前：${selectedType.char} · ${selectedType.style}`
+    : "未选择字模";
 
   document.querySelectorAll(".usage-tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.usageTab === state.usageTab);
@@ -2133,11 +2163,12 @@ function renderUsage() {
 function renderDrafts() {
   els.draftList.innerHTML =
     state.drafts
-      .map(
-        (draft) => {
-          const totalPlacements = draft.pages ? draft.pages.reduce((sum, p) => sum + p.placements.length, 0) : (draft.placements?.length || 0);
-          const pageCount = draft.pages ? draft.pages.length : 1;
-          return `
+      .map((draft) => {
+        const totalPlacements = draft.pages
+          ? draft.pages.reduce((sum, p) => sum + p.placements.length, 0)
+          : draft.placements?.length || 0;
+        const pageCount = draft.pages ? draft.pages.length : 1;
+        return `
           <article class="draft-item">
             <strong>${escapeHtml(draft.title)}</strong>
             <span>${pageCount}页 · ${totalPlacements}个落字 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
@@ -2147,8 +2178,7 @@ function renderDrafts() {
             </div>
           </article>
         `;
-        }
-      )
+      })
       .join("") || `<p class="empty">还没有保存草稿。</p>`;
 }
 
@@ -2201,7 +2231,7 @@ function getAvailableCellsForLayout(mode, direction) {
 
   if (direction === "horizontal") {
     for (let row = startCell.row; row < rows; row += 1) {
-      const startCol = (row === startCell.row) ? startCell.col : 0;
+      const startCol = row === startCell.row ? startCell.col : 0;
       for (let col = startCol; col < cols; col += 1) {
         const key = placementKey(row, col);
         if (visited.has(key)) continue;
@@ -2213,7 +2243,7 @@ function getAvailableCellsForLayout(mode, direction) {
     }
   } else {
     for (let col = startCell.col; col < cols; col += 1) {
-      const startRow = (col === startCell.col) ? startCell.row : 0;
+      const startRow = col === startCell.col ? startCell.row : 0;
       for (let row = startRow; row < rows; row += 1) {
         const key = placementKey(row, col);
         if (visited.has(key)) continue;
@@ -2257,7 +2287,13 @@ function computeTextAllocation(text) {
     if (existing) {
       existing.count += 1;
     } else {
-      perCharAllocation[ch].push({ typeId: best.id, char: best.char, style: best.style, count: 1, available: best.quantity - (usage[best.id] || 0) });
+      perCharAllocation[ch].push({
+        typeId: best.id,
+        char: best.char,
+        style: best.style,
+        count: 1,
+        available: best.quantity - (usage[best.id] || 0)
+      });
     }
   }
 
@@ -2439,8 +2475,10 @@ function renderSlpPagesList() {
   for (const page of pages) {
     const paperSizeLabel = page.paperSize === "bookmark" ? "书签" : page.paperSize === "square" ? "方形" : "明信片";
     const newBadge = page.isNew ? `<span class="sl-page-new-badge">新增</span>` : "";
-    const missingInfo = page.missingCount > 0 ? `<span class="sl-page-stat sl-stat-missing">跳过缺字 ${page.missingCount}</span>` : "";
-    const shortageInfo = page.shortageCount > 0 ? `<span class="sl-page-stat sl-stat-shortage">库存不足 ${page.shortageCount}</span>` : "";
+    const missingInfo =
+      page.missingCount > 0 ? `<span class="sl-page-stat sl-stat-missing">跳过缺字 ${page.missingCount}</span>` : "";
+    const shortageInfo =
+      page.shortageCount > 0 ? `<span class="sl-page-stat sl-stat-shortage">库存不足 ${page.shortageCount}</span>` : "";
 
     html += `
       <div class="sl-page-card">
@@ -2524,7 +2562,7 @@ function renderSlpShortageList() {
         <div class="sl-shortage-char">${escapeHtml(item.char)}</div>
         <div class="sl-shortage-info">
           <div>需要 <strong>${item.needed}</strong> 枚，可用 <strong>${item.available}</strong> 枚</div>
-          <div class="sl-shortage-styles">${item.styles.map(s => escapeHtml(s)).join("、")}</div>
+          <div class="sl-shortage-styles">${item.styles.map((s) => escapeHtml(s)).join("、")}</div>
         </div>
         <span class="sl-shortage-tag">缺 ${item.needed - item.available} 枚</span>
       </div>
@@ -2598,7 +2636,8 @@ function confirmTextLayout() {
     return;
   }
 
-  const confirmMsg = `确认将排版方案写入版面？\n\n` +
+  const confirmMsg =
+    `确认将排版方案写入版面？\n\n` +
     `• 预计落字：${plan.totalPlaced} 字\n` +
     `• 涉及页面：${plan.pages.length} 页` +
     (plan.newPagesCount > 0 ? `（新增 ${plan.newPagesCount} 页）` : "") +
@@ -2620,7 +2659,13 @@ function confirmTextLayout() {
       const newPage = {
         id: crypto.randomUUID(),
         name: `第${newIndex}页`,
-        settings: { ...state.pages[state.pages.length - 1]?.settings || { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 } },
+        settings: {
+          ...(state.pages[state.pages.length - 1]?.settings || {
+            paperSize: "postcard",
+            flowMode: "horizontal",
+            gridGap: 8
+          })
+        },
         placements: [],
         activeTemplateId: state.pages[state.pages.length - 1]?.activeTemplateId || null
       };
@@ -2633,7 +2678,7 @@ function confirmTextLayout() {
     let targetPage;
 
     if (pagePlan.isNew) {
-      const newPagesBefore = plan.pages.slice(0, pageIdx).filter(p => p.isNew).length;
+      const newPagesBefore = plan.pages.slice(0, pageIdx).filter((p) => p.isNew).length;
       const targetIndex = existingPagesCount + newPagesBefore;
       targetPage = state.pages[targetIndex];
     } else {
@@ -2657,7 +2702,7 @@ function confirmTextLayout() {
   const lastPlan = plan.pages[lastPageIndex];
   if (lastPlan) {
     if (lastPlan.isNew) {
-      const newPagesBefore = plan.pages.filter(p => p.isNew).length - 1;
+      const newPagesBefore = plan.pages.filter((p) => p.isNew).length - 1;
       state.currentPageId = state.pages[existingPagesCount + newPagesBefore].id;
     } else {
       state.currentPageId = state.pages[lastPlan.pageIndex].id;
@@ -2669,7 +2714,9 @@ function confirmTextLayout() {
   renderAll();
 
   setTimeout(() => {
-    alert(`排版完成！\n\n已写入 ${plan.totalPlaced} 字，分布在 ${plan.pages.length} 页上。\n如有需要，可点击撤销按钮撤回全部操作。`);
+    alert(
+      `排版完成！\n\n已写入 ${plan.totalPlaced} 字，分布在 ${plan.pages.length} 页上。\n如有需要，可点击撤销按钮撤回全部操作。`
+    );
   }, 100);
 }
 
@@ -2707,7 +2754,7 @@ function getPageAvailableCellsFromStart(page, direction, startCell) {
 
   if (direction === "horizontal") {
     for (let row = startCell.row; row < rows; row += 1) {
-      const startCol = (row === startCell.row) ? startCell.col : 0;
+      const startCol = row === startCell.row ? startCell.col : 0;
       for (let col = startCol; col < cols; col += 1) {
         const key = placementKey(row, col);
         if (visited.has(key)) continue;
@@ -2719,7 +2766,7 @@ function getPageAvailableCellsFromStart(page, direction, startCell) {
     }
   } else {
     for (let col = startCell.col; col < cols; col += 1) {
-      const startRow = (col === startCell.col) ? startCell.row : 0;
+      const startRow = col === startCell.col ? startCell.row : 0;
       for (let row = startRow; row < rows; row += 1) {
         const key = placementKey(row, col);
         if (visited.has(key)) continue;
@@ -2750,7 +2797,7 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
   const inventoryShortages = {};
   const charAllocations = {};
 
-  let charIndex = 0;
+  const charIndex = 0;
   let currentPageIdx = startPageIndex;
   let remainingCells = [];
   let pagesExtended = 0;
@@ -2769,7 +2816,13 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
     const newPage = {
       id: `preview-${crypto.randomUUID()}`,
       name: `第${newIdx}页（预排）`,
-      settings: { ...state.pages[state.pages.length - 1]?.settings || { paperSize: "postcard", flowMode: "horizontal", gridGap: 8 } },
+      settings: {
+        ...(state.pages[state.pages.length - 1]?.settings || {
+          paperSize: "postcard",
+          flowMode: "horizontal",
+          gridGap: 8
+        })
+      },
       placements: [],
       activeTemplateId: state.pages[state.pages.length - 1]?.activeTemplateId || null,
       _isNew: true
@@ -2823,10 +2876,11 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
     if (!assigned) {
       if (!inventoryShortages[ch]) {
         const remainingAvailable = matchingTypes.reduce(
-          (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0
+          (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)),
+          0
         );
         inventoryShortages[ch] = { char: ch, needed: charCount[ch], available: remainingAvailable, styles: [] };
-        inventoryShortages[ch].styles = matchingTypes.map(t => t.style);
+        inventoryShortages[ch].styles = matchingTypes.map((t) => t.style);
       }
       charAssignments.push({ char: ch, typeId: null, status: "shortage" });
       continue;
@@ -2838,7 +2892,7 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
     if (!charAllocations[ch]) {
       charAllocations[ch] = [];
     }
-    const existingAlloc = charAllocations[ch].find(a => a.typeId === assigned.id);
+    const existingAlloc = charAllocations[ch].find((a) => a.typeId === assigned.id);
     if (existingAlloc) {
       existingAlloc.count += 1;
     } else {
@@ -2921,11 +2975,11 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
     finalizePage();
   }
 
-  const totalPlaceableChars = charAssignments.filter(a => a.status === "ok").length;
+  const totalPlaceableChars = charAssignments.filter((a) => a.status === "ok").length;
   const totalMissing = missingChars.size;
   const totalShortage = Object.keys(inventoryShortages).length;
   const totalPlaced = pagesPlan.reduce((sum, p) => sum + p.placementCount, 0);
-  const newPagesCount = pagesPlan.filter(p => p.isNew).length;
+  const newPagesCount = pagesPlan.filter((p) => p.isNew).length;
 
   const perCharResults = [];
   for (const [ch, needed] of Object.entries(charCount)) {
@@ -2934,9 +2988,7 @@ function computeSmartLayout(text, direction, mode, startPageIndex = 0, startCell
       perCharResults.push({ char: ch, needed, status: "missing", allocations: [], totalAvailable: 0 });
       continue;
     }
-    const totalAvailable = matchingTypes.reduce(
-      (sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0
-    );
+    const totalAvailable = matchingTypes.reduce((sum, t) => sum + Math.max(0, t.quantity - (totalUsage[t.id] || 0)), 0);
     const allocations = charAllocations[ch] || [];
     const allocatedCount = allocations.reduce((sum, a) => sum + a.count, 0);
     const status = allocatedCount >= needed ? "ok" : "low";
@@ -3954,9 +4006,7 @@ function checkEdgeDensity() {
         }
       }
     }
-    const edgeUsed = page.placements.filter((p) =>
-      edgeCells.some((e) => e.row === p.row && e.col === p.col)
-    ).length;
+    const edgeUsed = page.placements.filter((p) => edgeCells.some((e) => e.row === p.row && e.col === p.col)).length;
     const totalUsed = page.placements.length;
     if (totalUsed > 0 && edgeUsed >= Math.max(3, Math.ceil(totalUsed * 0.6))) {
       const locations = edgeCells
@@ -3999,7 +4049,11 @@ function checkExportSize() {
     const { width, height } = getExportCanvasSize(page);
     const totalPixels = width * height;
     const invalidSize = !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0;
-    const sideOutOfRange = width < exportSizeLimits.minSide || height < exportSizeLimits.minSide || width > exportSizeLimits.maxSide || height > exportSizeLimits.maxSide;
+    const sideOutOfRange =
+      width < exportSizeLimits.minSide ||
+      height < exportSizeLimits.minSide ||
+      width > exportSizeLimits.maxSide ||
+      height > exportSizeLimits.maxSide;
     const pixelsOutOfRange = totalPixels > exportSizeLimits.maxPixels;
 
     if (usedCount === 0) {
@@ -4085,15 +4139,17 @@ function renderProofreadSummary(issues) {
   const errorClass = errorCount > 0 ? "error" : "ok";
   const warningClass = warningCount > 0 ? "warning" : "ok";
 
-  const categoryBreakdown = Object.entries(PROOFREAD_CATEGORY_LABELS).map(([cat, label]) => {
-    const count = issues.filter((i) => i.category === cat).length;
-    if (count === 0) return "";
-    const type = issues.find((i) => i.category === cat)?.type || "warning";
-    return `<div class="proofread-summary-item ${type === "error" ? "error" : "warning"}" style="font-size:11px;padding:8px 10px;">
+  const categoryBreakdown = Object.entries(PROOFREAD_CATEGORY_LABELS)
+    .map(([cat, label]) => {
+      const count = issues.filter((i) => i.category === cat).length;
+      if (count === 0) return "";
+      const type = issues.find((i) => i.category === cat)?.type || "warning";
+      return `<div class="proofread-summary-item ${type === "error" ? "error" : "warning"}" style="font-size:11px;padding:8px 10px;">
       <span class="label">${label}</span>
       <span class="value" style="font-size:14px;">${count}</span>
     </div>`;
-  }).join("");
+    })
+    .join("");
 
   els.proofreadSummary.innerHTML = `
     <div class="proofread-summary-item ${errorClass}">
@@ -4189,7 +4245,9 @@ function navigateProofreadIssue(direction) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       target.style.transition = "box-shadow 0.3s";
       target.style.boxShadow = "0 0 0 3px rgba(166, 64, 55, 0.3)";
-      setTimeout(() => { target.style.boxShadow = ""; }, 2000);
+      setTimeout(() => {
+        target.style.boxShadow = "";
+      }, 2000);
     }
   }
   if (issue.locations && issue.locations.length > 0) {
@@ -4339,7 +4397,12 @@ function validateInventoryItem(item, index) {
   if (typeof item.size !== "number" || !Number.isInteger(item.size) || item.size < 8 || item.size > 72) {
     errors.push(`第${index + 1}条：字段「字号」必须是8-72之间的整数`);
   }
-  if (typeof item.quantity !== "number" || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+  if (
+    typeof item.quantity !== "number" ||
+    !Number.isInteger(item.quantity) ||
+    item.quantity < 1 ||
+    item.quantity > 99
+  ) {
     errors.push(`第${index + 1}条：字段「数量」必须是1-99之间的整数`);
   }
   if (typeof item.wear !== "string" || !VALID_WEAR.includes(item.wear)) {
@@ -4571,10 +4634,7 @@ function confirmImport() {
 
   const mode = document.querySelector('input[name="importMode"]:checked').value;
   const { validItems } = pendingImport;
-  const dedupedImport = assignInventoryItemIds(
-    deduplicateItems(validItems),
-    () => crypto.randomUUID()
-  );
+  const dedupedImport = assignInventoryItemIds(deduplicateItems(validItems), () => crypto.randomUUID());
 
   state.inventory = applyImportToInventory(state.inventory, mode, dedupedImport);
 
@@ -4591,7 +4651,7 @@ function confirmImport() {
 }
 
 let slAnalysisResult = null;
-let slAddedItems = new Set();
+const slAddedItems = new Set();
 
 function loadPurchaseDrafts() {
   const saved = localStorage.getItem(purchaseDraftKey);
@@ -4643,10 +4703,15 @@ function saveShortageAsDraft() {
     defaultQuantity: quantity,
     sourceText: sourceText,
     items: purchasableItems.map((item) => {
-      const quantityInput = item.status === "missing"
-        ? document.querySelector(`[data-sl-quantity-missing="${item.char}"]`)
-        : document.querySelector(`[data-sl-quantity-low="${item.char}"]`);
-      const itemQty = quantityInput ? Number(quantityInput.value) : (item.status === "missing" ? item.needed : item.shortage);
+      const quantityInput =
+        item.status === "missing"
+          ? document.querySelector(`[data-sl-quantity-missing="${item.char}"]`)
+          : document.querySelector(`[data-sl-quantity-low="${item.char}"]`);
+      const itemQty = quantityInput
+        ? Number(quantityInput.value)
+        : item.status === "missing"
+          ? item.needed
+          : item.shortage;
       return {
         char: item.char,
         status: item.status,
@@ -4739,10 +4804,14 @@ function showDraftDetail(draftId) {
       </div>
       <div class="sl-detail-items-title">采购明细</div>
       <div class="sl-detail-items">${itemsHtml}</div>
-      ${draft.sourceText ? `
+      ${
+        draft.sourceText
+          ? `
         <div class="sl-detail-source-title">源文本</div>
         <div class="sl-detail-source">${escapeHtml(draft.sourceText)}</div>
-      ` : ""}
+      `
+          : ""
+      }
     </div>
   `;
 
@@ -4793,7 +4862,9 @@ function applyPurchaseDraft(draftId) {
   let addedCount = 0;
 
   for (const item of draft.items) {
-    const existingItem = state.inventory.find((i) => i.char === item.char && i.style === style && i.size === size && i.wear === wear);
+    const existingItem = state.inventory.find(
+      (i) => i.char === item.char && i.style === style && i.size === size && i.wear === wear
+    );
     if (existingItem) {
       existingItem.quantity += item.quantity;
     } else {
@@ -4978,15 +5049,25 @@ function analyzeShortageText() {
   const okCount = results.filter((r) => r.status === "ok").length;
 
   let summaryHtml = "";
-  if (missingCount) summaryHtml += `<span class="sl-summary-item"><span class="dot red"></span>缺字 ${missingCount} 种</span>`;
+  if (missingCount)
+    summaryHtml += `<span class="sl-summary-item"><span class="dot red"></span>缺字 ${missingCount} 种</span>`;
   if (lowCount) summaryHtml += `<span class="sl-summary-item"><span class="dot gold"></span>不足 ${lowCount} 种</span>`;
   if (okCount) summaryHtml += `<span class="sl-summary-item"><span class="dot green"></span>充足 ${okCount} 种</span>`;
   summaryHtml += `<span class="sl-summary-item">共 ${Object.keys(countChars(text)).length} 种字，${text.replace(/\s/g, "").length} 个字</span>`;
   els.slSummary.innerHTML = summaryHtml;
 
-  renderShortageList("missing", results.filter((r) => r.status === "missing"));
-  renderShortageList("low", results.filter((r) => r.status === "low"));
-  renderShortageList("ok", results.filter((r) => r.status === "ok"));
+  renderShortageList(
+    "missing",
+    results.filter((r) => r.status === "missing")
+  );
+  renderShortageList(
+    "low",
+    results.filter((r) => r.status === "low")
+  );
+  renderShortageList(
+    "ok",
+    results.filter((r) => r.status === "ok")
+  );
 
   els.slResults.hidden = false;
 }
@@ -5094,7 +5175,9 @@ function addMissingToInventory(char) {
   const quantityInput = document.querySelector(`[data-sl-quantity-missing="${char}"]`);
   const quantity = quantityInput ? Number(quantityInput.value) : 3;
 
-  const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
+  const existingItem = state.inventory.find(
+    (item) => item.char === char && item.style === style && item.size === size && item.wear === wear
+  );
   if (existingItem) {
     if (!confirm(`字模库中已存在「${char}·${style}」，是否增加数量？`)) return;
     pushHistory();
@@ -5114,7 +5197,10 @@ function addMissingToInventory(char) {
   }
 
   slAddedItems.add(`missing-${char}`);
-  renderShortageList("missing", slAnalysisResult.filter((r) => r.status === "missing"));
+  renderShortageList(
+    "missing",
+    slAnalysisResult.filter((r) => r.status === "missing")
+  );
   renderAll();
   alert(`已添加「${char}」${quantity}枚到字模库`);
 }
@@ -5132,7 +5218,9 @@ function addLowToInventory(char) {
   const quantityInput = document.querySelector(`[data-sl-quantity-low="${char}"]`);
   const quantity = quantityInput ? Number(quantityInput.value) : 1;
 
-  const existingItem = state.inventory.find((item) => item.char === char && item.style === style && item.size === size && item.wear === wear);
+  const existingItem = state.inventory.find(
+    (item) => item.char === char && item.style === style && item.size === size && item.wear === wear
+  );
   pushHistory();
 
   if (existingItem) {
@@ -5151,7 +5239,10 @@ function addLowToInventory(char) {
   }
 
   slAddedItems.add(`low-${char}`);
-  renderShortageList("low", slAnalysisResult.filter((r) => r.status === "low"));
+  renderShortageList(
+    "low",
+    slAnalysisResult.filter((r) => r.status === "low")
+  );
   renderAll();
   alert(`已为「${char}」补充${quantity}枚`);
 }
@@ -5180,7 +5271,9 @@ function addAllMissing() {
     const quantityInput = document.querySelector(`[data-sl-quantity-missing="${char}"]`);
     const quantity = quantityInput ? Number(quantityInput.value) : item.needed;
 
-    const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
+    const existingItem = state.inventory.find(
+      (i) => i.char === char && i.style === style && i.size === size && i.wear === wear
+    );
     if (existingItem) {
       existingItem.quantity += quantity;
     } else {
@@ -5199,7 +5292,10 @@ function addAllMissing() {
     addedCount++;
   }
 
-  renderShortageList("missing", slAnalysisResult.filter((r) => r.status === "missing"));
+  renderShortageList(
+    "missing",
+    slAnalysisResult.filter((r) => r.status === "missing")
+  );
   renderAll();
   alert(`已批量添加 ${addedCount} 种缺字到字模库`);
 }
@@ -5228,7 +5324,9 @@ function addAllLow() {
     const quantityInput = document.querySelector(`[data-sl-quantity-low="${char}"]`);
     const quantity = quantityInput ? Number(quantityInput.value) : item.shortage;
 
-    const existingItem = state.inventory.find((i) => i.char === char && i.style === style && i.size === size && i.wear === wear);
+    const existingItem = state.inventory.find(
+      (i) => i.char === char && i.style === style && i.size === size && i.wear === wear
+    );
     if (existingItem) {
       existingItem.quantity += quantity;
     } else {
@@ -5247,7 +5345,10 @@ function addAllLow() {
     addedCount++;
   }
 
-  renderShortageList("low", slAnalysisResult.filter((r) => r.status === "low"));
+  renderShortageList(
+    "low",
+    slAnalysisResult.filter((r) => r.status === "low")
+  );
   renderAll();
   alert(`已批量补充 ${addedCount} 种字模`);
 }
@@ -5472,7 +5573,10 @@ els.undoBtn.addEventListener("click", undo);
 els.redoBtn.addEventListener("click", redo);
 
 function isEditingText(eventTarget) {
-  return eventTarget instanceof HTMLElement && Boolean(eventTarget.closest("input, textarea, select, [contenteditable='true']"));
+  return (
+    eventTarget instanceof HTMLElement &&
+    Boolean(eventTarget.closest("input, textarea, select, [contenteditable='true']"))
+  );
 }
 
 document.addEventListener("keydown", (event) => {
@@ -5810,7 +5914,7 @@ els.stage.addEventListener("drop", (event) => {
   placeType(Number(cell.dataset.row), Number(cell.dataset.col), event.dataTransfer.getData("text/plain"));
 });
 
-let selectionDragState = {
+const selectionDragState = {
   isDragging: false,
   startX: 0,
   startY: 0,
@@ -5845,9 +5949,12 @@ document.addEventListener("mousemove", (event) => {
   if (!selectionDragState.isDragging) {
     if (selectionState.isPasteMode) {
       const cellInfo = getCellFromPoint(event.clientX, event.clientY);
-      if (cellInfo && (!selectionState.pastePreviewCell ||
+      if (
+        cellInfo &&
+        (!selectionState.pastePreviewCell ||
           selectionState.pastePreviewCell.row !== cellInfo.row ||
-          selectionState.pastePreviewCell.col !== cellInfo.col)) {
+          selectionState.pastePreviewCell.col !== cellInfo.col)
+      ) {
         selectionState.pastePreviewCell = cellInfo;
         showPastePreview(cellInfo.row, cellInfo.col);
       } else if (!cellInfo) {
@@ -5920,7 +6027,9 @@ function handleStageCellClick(row, col, additive) {
     const check = canPasteSelection(row, col);
     if (!check.ok) {
       if (check.shortages) {
-        const shortageText = check.shortages.map(s => `${s.char}(${s.style}): 需要${s.needed}，可用${s.available}`).join("\n");
+        const shortageText = check.shortages
+          .map((s) => `${s.char}(${s.style}): 需要${s.needed}，可用${s.available}`)
+          .join("\n");
         alert(`${check.reason}：\n${shortageText}`);
       } else {
         let detail = "";
@@ -5991,9 +6100,7 @@ function canMoveSelectionTo(targetRow, targetCol) {
   }
 
   const currentPage = getCurrentPage();
-  const originalKeys = new Set(
-    selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col))
-  );
+  const originalKeys = new Set(selectionState.moveOriginalPlacements.map((p) => placementKey(p.row, p.col)));
 
   const targetPlacements = selectionState.moveOriginalPlacements.map((p) => ({
     row: p.row + offsetRow,
@@ -6170,7 +6277,10 @@ renderAll();
           pass,
           msg: msg || `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
         });
-        if (!pass) throw new Error(msg || `Assertion failed: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+        if (!pass)
+          throw new Error(
+            msg || `Assertion failed: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+          );
       },
       deepEqual(actual, expected, msg) {
         const pass = JSON.stringify(actual) === JSON.stringify(expected);
@@ -6208,7 +6318,9 @@ renderAll();
       state: deepCloneState(state),
       historyStack: historyStack.map(deepCloneState),
       redoStack: redoStack.map(deepCloneState),
-      pendingImport: pendingImport ? JSON.parse(JSON.stringify(pendingImport, (k, v) => k === "validItems" ? v.map(i => ({ ...i })) : v)) : null
+      pendingImport: pendingImport
+        ? JSON.parse(JSON.stringify(pendingImport, (k, v) => (k === "validItems" ? v.map((i) => ({ ...i })) : v)))
+        : null
     };
   }
 
@@ -6219,8 +6331,6 @@ renderAll();
     pendingImport = snap.pendingImport;
     updateHistoryButtons();
   }
-
-
 
   function signatureSet(inv) {
     return new Set(inv.map(itemSignature));
@@ -6236,10 +6346,15 @@ renderAll();
       if (tc.status === "fail") failCount++;
 
       const statusLabel = tc.status === "pending" ? "待运行" : tc.status === "pass" ? "通过" : "失败";
-      const assertsHtml = tc.asserts.map(a =>
-        `<div class="test-assert ${a.pass ? "pass" : "fail"}"><span class="assert-msg">${escapeHtml(a.msg)}</span></div>`
-      ).join("");
-      const errorHtml = tc.error ? `<div class="test-error">${escapeHtml(tc.error.message || String(tc.error))}</div>` : "";
+      const assertsHtml = tc.asserts
+        .map(
+          (a) =>
+            `<div class="test-assert ${a.pass ? "pass" : "fail"}"><span class="assert-msg">${escapeHtml(a.msg)}</span></div>`
+        )
+        .join("");
+      const errorHtml = tc.error
+        ? `<div class="test-error">${escapeHtml(tc.error.message || String(tc.error))}</div>`
+        : "";
 
       html += `
         <div class="test-case" data-idx="${idx}">
@@ -6413,15 +6528,19 @@ renderAll();
     assert.equal(state.inventory.length, beforeCount + 2, "合并后仅净增2条");
     const afterSigs = signatureSet(state.inventory);
     for (const s of beforeSigs) assert.true(afterSigs.has(s), `原有签名 ${s} 仍然存在`);
-    assert.true(afterSigs.has(itemSignature({ char: "人", style: "黑体铅字", size: 26, quantity: 4, wear: "旧痕" })), "新增「人」存在");
-    assert.true(afterSigs.has(itemSignature({ char: "和", style: "仿宋细字", size: 22, quantity: 2, wear: "新" })), "新增「和」存在");
+    assert.true(
+      afterSigs.has(itemSignature({ char: "人", style: "黑体铅字", size: 26, quantity: 4, wear: "旧痕" })),
+      "新增「人」存在"
+    );
+    assert.true(
+      afterSigs.has(itemSignature({ char: "和", style: "仿宋细字", size: 22, quantity: 2, wear: "新" })),
+      "新增「和」存在"
+    );
   });
 
   // ========= 测试用例 5：覆盖模式清空版面落字 =========
   registerTest("5. 覆盖模式：清空版面落字 + 替换字模库", async (assert) => {
-    state.inventory = [
-      { id: crypto.randomUUID(), char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }
-    ];
+    state.inventory = [{ id: crypto.randomUUID(), char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }];
     state.selectedTypeId = state.inventory[0].id;
     const pageA = createDefaultPage("页A");
     const pageB = createDefaultPage("页B");
@@ -6429,9 +6548,7 @@ renderAll();
       { typeId: state.inventory[0].id, row: 0, col: 0 },
       { typeId: state.inventory[0].id, row: 0, col: 1 }
     ];
-    pageB.placements = [
-      { typeId: state.inventory[0].id, row: 1, col: 0 }
-    ];
+    pageB.placements = [{ typeId: state.inventory[0].id, row: 1, col: 0 }];
     state.pages = [pageA, pageB];
     state.currentPageId = pageA.id;
 
@@ -6458,24 +6575,34 @@ renderAll();
 
     assert.equal(state.inventory.length, 2, "覆盖后字模库仅含导入的2条");
     const overwriteSigs = signatureSet(state.inventory);
-    assert.true(overwriteSigs.has(itemSignature({ char: "新", style: "黑体铅字", size: 30, quantity: 5, wear: "微磨" })), "覆盖后存在「新」");
-    assert.true(overwriteSigs.has(itemSignature({ char: "来", style: "楷体木刻", size: 28, quantity: 2, wear: "新" })), "覆盖后存在「来」");
-    assert.false(overwriteSigs.has(itemSignature({ char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" })), "覆盖后「旧」被移除");
+    assert.true(
+      overwriteSigs.has(itemSignature({ char: "新", style: "黑体铅字", size: 30, quantity: 5, wear: "微磨" })),
+      "覆盖后存在「新」"
+    );
+    assert.true(
+      overwriteSigs.has(itemSignature({ char: "来", style: "楷体木刻", size: 28, quantity: 2, wear: "新" })),
+      "覆盖后存在「来」"
+    );
+    assert.false(
+      overwriteSigs.has(itemSignature({ char: "旧", style: "宋体旧字", size: 24, quantity: 3, wear: "新" })),
+      "覆盖后「旧」被移除"
+    );
 
     state.pages.forEach((p, i) => {
       assert.equal(p.placements.length, 0, `覆盖模式：第${i + 1}页(${p.name}) placements被清空`);
     });
 
     if (state.inventory.length > 0) {
-      assert.true(state.inventory.some(i => i.id === state.selectedTypeId), "覆盖后selectedTypeId指向新字模之一");
+      assert.true(
+        state.inventory.some((i) => i.id === state.selectedTypeId),
+        "覆盖后selectedTypeId指向新字模之一"
+      );
     }
   });
 
   // ========= 测试用例 6：纯函数无时间/随机副作用 =========
   registerTest("6. 纯函数：重复调用同输入得到同输出", async (assert) => {
-    const rawItems = [
-      { char: "净", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }
-    ];
+    const rawItems = [{ char: "净", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }];
     const normalizedA = validateAndNormalizeItems(rawItems);
     const normalizedB = validateAndNormalizeItems(rawItems);
     assert.deepEqual(normalizedA, normalizedB, "校验归一化重复调用结果一致");
