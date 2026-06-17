@@ -4350,7 +4350,6 @@ function validateInventoryItem(item, index) {
 
 function normalizeInventoryItem(item) {
   return {
-    id: crypto.randomUUID(),
     char: item.char.trim(),
     style: item.style.trim(),
     size: Number(item.size),
@@ -4420,10 +4419,17 @@ function deduplicateItems(items) {
   return deduped;
 }
 
-function buildExportPayload(inventory) {
+function assignInventoryItemIds(items, createId) {
+  return items.map((item) => ({
+    ...item,
+    id: createId()
+  }));
+}
+
+function buildExportPayload(inventory, exportedAt) {
   return {
     version: 1,
-    exportedAt: new Date().toISOString(),
+    exportedAt,
     count: inventory.length,
     inventory: inventory.map((item) => ({
       char: item.char,
@@ -4457,12 +4463,13 @@ function resolveSelectedTypeId(inventory, prevSelectedTypeId) {
 }
 
 function exportInventory() {
-  const payload = buildExportPayload(state.inventory);
+  const exportedAt = new Date().toISOString();
+  const payload = buildExportPayload(state.inventory, exportedAt);
   const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const stamp = exportedAt.replace(/[:.]/g, "-").slice(0, 19);
   link.download = `字模库_${stamp}.json`;
   link.href = url;
   link.click();
@@ -4564,7 +4571,10 @@ function confirmImport() {
 
   const mode = document.querySelector('input[name="importMode"]:checked').value;
   const { validItems } = pendingImport;
-  const dedupedImport = deduplicateItems(validItems);
+  const dedupedImport = assignInventoryItemIds(
+    deduplicateItems(validItems),
+    () => crypto.randomUUID()
+  );
 
   state.inventory = applyImportToInventory(state.inventory, mode, dedupedImport);
 
@@ -6298,7 +6308,7 @@ renderAll();
       { char: "秋", style: "黑体铅字", size: 32, quantity: 2, wear: "旧痕" }
     ];
 
-    const payload = buildExportPayload(seedItems);
+    const payload = buildExportPayload(seedItems, "2026-06-15T10:30:00.000Z");
     assert.equal(payload.version, 1, "导出payload.version === 1");
     assert.equal(payload.count, 3, "导出count === 3");
     assert.equal(payload.inventory.length, 3, "导出inventory数组长度正确");
@@ -6315,7 +6325,7 @@ renderAll();
     for (const s of exportedSigs) assert.true(importedSigs.has(s), `导入后存在签名 ${s}`);
 
     pendingImport.validItems.forEach((it) => {
-      assert.true(typeof it.id === "string" && it.id.length > 0, "每个导入条目分配了id");
+      assert.false("id" in it, "纯解析校验阶段不分配id");
     });
   });
 
@@ -6459,6 +6469,23 @@ renderAll();
     if (state.inventory.length > 0) {
       assert.true(state.inventory.some(i => i.id === state.selectedTypeId), "覆盖后selectedTypeId指向新字模之一");
     }
+  });
+
+  // ========= 测试用例 6：纯函数无时间/随机副作用 =========
+  registerTest("6. 纯函数：重复调用同输入得到同输出", async (assert) => {
+    const rawItems = [
+      { char: "净", style: "宋体旧字", size: 24, quantity: 3, wear: "新" }
+    ];
+    const normalizedA = validateAndNormalizeItems(rawItems);
+    const normalizedB = validateAndNormalizeItems(rawItems);
+    assert.deepEqual(normalizedA, normalizedB, "校验归一化重复调用结果一致");
+    assert.false("id" in normalizedA.validItems[0], "校验归一化不生成随机id");
+
+    const exportedAt = "2026-06-15T10:30:00.000Z";
+    const payloadA = buildExportPayload(rawItems, exportedAt);
+    const payloadB = buildExportPayload(rawItems, exportedAt);
+    assert.deepEqual(payloadA, payloadB, "导出payload生成重复调用结果一致");
+    assert.equal(payloadA.exportedAt, exportedAt, "导出时间来自显式入参");
   });
 
   // ========= 初始化UI =========

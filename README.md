@@ -67,8 +67,8 @@
 | `validateAndNormalizeItems(rawArray)` | 逐条校验 + 归一化 | 字模数组 → `{ validItems, allErrors }` |
 | `computeImportStats(validItems, existingInventory)` | 计算新增/重复/合并/覆盖数 | 有效条目 + 现有库 → `{ newUniqueCount, duplicateCount, mergeTotal, overwriteTotal }` |
 | `deduplicateItems(items)` | 按签名去重 | 字模数组 → 去重后的数组 |
-| `buildExportPayload(inventory)` | 生成导出 JSON 对象 | 字模库 → `{ version, exportedAt, count, inventory }` |
+| `buildExportPayload(inventory, exportedAt)` | 生成导出 JSON 对象 | 字模库 + 导出时间 → `{ version, exportedAt, count, inventory }` |
 | `applyImportToInventory(currentInventory, mode, dedupedImport)` | 合并或覆盖 | 现有库 + 模式 + 去重条目 → 新库存数组 |
 | `resolveSelectedTypeId(inventory, prevSelectedTypeId)` | 确保选中项有效 | 库 + 旧选中ID → 新选中ID |
 
-**最小验证步骤**：在 URL 后加 `?test=1` 参数打开页面，点击「运行全部测试」，5 个用例全部通过即可确认导入导出行为正确。
+**最小验证步骤**：在 URL 后加 `?test=1` 参数打开页面，点击「运行全部测试」，6 个用例全部通过即可确认导入导出行为正确，并覆盖核心纯函数重复调用一致性。
