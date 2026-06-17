@@ -4363,12 +4363,69 @@ function itemSignature(item) {
   return `${item.char}|${item.style}|${item.size}|${item.quantity}|${item.wear}`;
 }
 
-function exportInventory() {
-  const payload = {
+function parseImportRawArray(data) {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object" && Array.isArray(data.inventory)) return data.inventory;
+  return null;
+}
+
+function validateAndNormalizeItems(rawArray) {
+  const validItems = [];
+  const allErrors = [];
+  rawArray.forEach((item, idx) => {
+    const result = validateInventoryItem(item, idx);
+    if (result.valid) {
+      validItems.push(normalizeInventoryItem(item));
+    } else {
+      allErrors.push(...result.errors);
+    }
+  });
+  return { validItems, allErrors };
+}
+
+function computeImportStats(validItems, existingInventory) {
+  const currentSigs = new Set(existingInventory.map(itemSignature));
+  const importSigs = new Set();
+  let newUniqueCount = 0;
+  let duplicateCount = 0;
+  for (const item of validItems) {
+    const sig = itemSignature(item);
+    if (importSigs.has(sig)) {
+      duplicateCount += 1;
+      continue;
+    }
+    importSigs.add(sig);
+    if (!currentSigs.has(sig)) {
+      newUniqueCount += 1;
+    } else {
+      duplicateCount += 1;
+    }
+  }
+  const mergeTotal = existingInventory.length + newUniqueCount;
+  const uniqueSet = new Set(validItems.map(itemSignature));
+  const overwriteTotal = uniqueSet.size;
+  return { newUniqueCount, duplicateCount, mergeTotal, overwriteTotal };
+}
+
+function deduplicateItems(items) {
+  const seen = new Set();
+  const deduped = [];
+  for (const item of items) {
+    const sig = itemSignature(item);
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      deduped.push(item);
+    }
+  }
+  return deduped;
+}
+
+function buildExportPayload(inventory) {
+  return {
     version: 1,
     exportedAt: new Date().toISOString(),
-    count: state.inventory.length,
-    inventory: state.inventory.map((item) => ({
+    count: inventory.length,
+    inventory: inventory.map((item) => ({
       char: item.char,
       style: item.style,
       size: item.size,
@@ -4376,6 +4433,31 @@ function exportInventory() {
       wear: item.wear
     }))
   };
+}
+
+function applyImportToInventory(currentInventory, mode, dedupedImport) {
+  if (mode === "overwrite") {
+    return dedupedImport;
+  }
+  const currentSigs = new Set(currentInventory.map(itemSignature));
+  const merged = currentInventory.slice();
+  for (const item of dedupedImport) {
+    const sig = itemSignature(item);
+    if (!currentSigs.has(sig)) {
+      merged.push(item);
+      currentSigs.add(sig);
+    }
+  }
+  return merged;
+}
+
+function resolveSelectedTypeId(inventory, prevSelectedTypeId) {
+  if (inventory.some((i) => i.id === prevSelectedTypeId)) return prevSelectedTypeId;
+  return inventory[0]?.id || null;
+}
+
+function exportInventory() {
+  const payload = buildExportPayload(state.inventory);
   const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -4414,48 +4496,22 @@ function handleImportFile(event) {
 }
 
 function processImportData(data, fileName) {
-  const rawArray = Array.isArray(data) ? data : data?.inventory;
-  if (!Array.isArray(rawArray)) {
+  const rawArray = parseImportRawArray(data);
+  if (!rawArray) {
     alert("JSON格式不正确：缺少字模数组");
     return;
   }
 
-  const validItems = [];
-  const allErrors = [];
-
-  rawArray.forEach((item, idx) => {
-    const result = validateInventoryItem(item, idx);
-    if (result.valid) {
-      validItems.push(normalizeInventoryItem(item));
-    } else {
-      allErrors.push(...result.errors);
-    }
-  });
-
-  const currentSigs = new Set(state.inventory.map(itemSignature));
-  const importSigs = new Set();
-  let newUniqueCount = 0;
-  let duplicateCount = 0;
-
-  for (const item of validItems) {
-    const sig = itemSignature(item);
-    if (importSigs.has(sig)) {
-      duplicateCount += 1;
-      continue;
-    }
-    importSigs.add(sig);
-    if (!currentSigs.has(sig)) {
-      newUniqueCount += 1;
-    } else {
-      duplicateCount += 1;
-    }
-  }
+  const { validItems, allErrors } = validateAndNormalizeItems(rawArray);
+  const stats = computeImportStats(validItems, state.inventory);
 
   pendingImport = {
     validItems,
     allErrors,
-    newUniqueCount,
-    duplicateCount,
+    newUniqueCount: stats.newUniqueCount,
+    duplicateCount: stats.duplicateCount,
+    mergeTotal: stats.mergeTotal,
+    overwriteTotal: stats.overwriteTotal,
     fileName
   };
 
@@ -4465,10 +4521,7 @@ function processImportData(data, fileName) {
 
 function renderImportModal() {
   if (!pendingImport) return;
-  const { validItems, allErrors, newUniqueCount, duplicateCount, fileName } = pendingImport;
-  const mergeTotal = state.inventory.length + newUniqueCount;
-  const uniqueSet = new Set(validItems.map(itemSignature));
-  const overwriteTotal = uniqueSet.size;
+  const { validItems, allErrors, newUniqueCount, duplicateCount, mergeTotal, overwriteTotal, fileName } = pendingImport;
 
   let summaryHtml = `<p>文件：<strong>${escapeHtml(fileName)}</strong></p>`;
   summaryHtml += `<div class="import-stats">`;
@@ -4511,36 +4564,17 @@ function confirmImport() {
 
   const mode = document.querySelector('input[name="importMode"]:checked').value;
   const { validItems } = pendingImport;
+  const dedupedImport = deduplicateItems(validItems);
 
-  const seen = new Set();
-  const dedupedImport = [];
-  for (const item of validItems) {
-    const sig = itemSignature(item);
-    if (!seen.has(sig)) {
-      seen.add(sig);
-      dedupedImport.push(item);
-    }
-  }
+  state.inventory = applyImportToInventory(state.inventory, mode, dedupedImport);
 
   if (mode === "overwrite") {
-    state.inventory = dedupedImport;
     state.pages.forEach((page) => {
       page.placements = [];
     });
-    state.selectedTypeId = state.inventory[0]?.id || null;
-  } else {
-    const currentSigs = new Set(state.inventory.map(itemSignature));
-    for (const item of dedupedImport) {
-      const sig = itemSignature(item);
-      if (!currentSigs.has(sig)) {
-        state.inventory.push(item);
-        currentSigs.add(sig);
-      }
-    }
-    if (!state.inventory.find((i) => i.id === state.selectedTypeId)) {
-      state.selectedTypeId = state.inventory[0]?.id || null;
-    }
   }
+
+  state.selectedTypeId = resolveSelectedTypeId(state.inventory, state.selectedTypeId);
 
   closeImportModal();
   renderAll();
@@ -6176,20 +6210,7 @@ renderAll();
     updateHistoryButtons();
   }
 
-  function buildExportPayload(items) {
-    return {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      count: items.length,
-      inventory: items.map(i => ({
-        char: i.char,
-        style: i.style,
-        size: i.size,
-        quantity: i.quantity,
-        wear: i.wear
-      }))
-    };
-  }
+
 
   function signatureSet(inv) {
     return new Set(inv.map(itemSignature));

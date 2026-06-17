@@ -56,3 +56,19 @@
 ```
 
 导入时也支持直接传入一个数组（省略外层包装对象），数组中的每个元素即一条字模。
+
+### 内部逻辑与最小验证方式
+
+字模库导入导出核心逻辑已拆分为以下纯函数，可在浏览器控制台或内置测试中独立调用验证：
+
+| 函数 | 职责 | 输入 → 输出 |
+|---|---|---|
+| `parseImportRawArray(data)` | 解析 JSON，提取字模数组 | 任意 JSON → `Array \| null` |
+| `validateAndNormalizeItems(rawArray)` | 逐条校验 + 归一化 | 字模数组 → `{ validItems, allErrors }` |
+| `computeImportStats(validItems, existingInventory)` | 计算新增/重复/合并/覆盖数 | 有效条目 + 现有库 → `{ newUniqueCount, duplicateCount, mergeTotal, overwriteTotal }` |
+| `deduplicateItems(items)` | 按签名去重 | 字模数组 → 去重后的数组 |
+| `buildExportPayload(inventory)` | 生成导出 JSON 对象 | 字模库 → `{ version, exportedAt, count, inventory }` |
+| `applyImportToInventory(currentInventory, mode, dedupedImport)` | 合并或覆盖 | 现有库 + 模式 + 去重条目 → 新库存数组 |
+| `resolveSelectedTypeId(inventory, prevSelectedTypeId)` | 确保选中项有效 | 库 + 旧选中ID → 新选中ID |
+
+**最小验证步骤**：在 URL 后加 `?test=1` 参数打开页面，点击「运行全部测试」，5 个用例全部通过即可确认导入导出行为正确。
